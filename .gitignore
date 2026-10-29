@@ -1,0 +1,32 @@
+# =========================
+# DATASETS - NO SUBIR A GITHUB
+# =========================
+data/raw/
+data/processed/
+data/curated/
+
+# =========================
+# PYTHON
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+env/
+
+# =========================
+# JUPYTER
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# RESULTADOS GENERADOS
+# =========================
+results/
+
+# =========================
+# SISTEMA
+# =========================
+.DS_Store
+Thumbs.db
