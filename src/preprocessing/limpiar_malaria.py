@@ -14,6 +14,10 @@ from pyspark.sql.functions import (
 spark = (
     SparkSession.builder
     .appName("Limpieza_Malaria")
+    .master("local[4]")
+    .config("spark.driver.memory", "2g")
+    .config("spark.sql.shuffle.partitions", "8")
+    .config("spark.sql.constraintPropagation.enabled", "false")
     .getOrCreate()
 )
 
@@ -257,6 +261,19 @@ df = df.filter(
         (col("semana") <= 26)
     )
 )
+
+# ============================================================
+# 13B. MATERIALIZAR EN CACHÉ
+# ============================================================
+# Sin esto, cada acción posterior (count/show) recalcula toda
+# la cadena de filtros desde el CSV original: el optimizador de
+# Spark vuelve a analizar un plan lógico cada vez más largo y el
+# tiempo de planificación crece de forma no lineal. Al cachear
+# aquí se corta esa cadena y las acciones siguientes reutilizan
+# el resultado ya filtrado.
+
+df = df.cache()
+df.count()
 
 # ============================================================
 # 14. CONTROL DEL PERÍODO
