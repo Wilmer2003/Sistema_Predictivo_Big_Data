@@ -1,47 +1,88 @@
-# Evidencia 3.6 y 3.7 (Anexo C)
+# Evidencia 3.6 y 3.7 (Anexo C) — IRA, Malaria, SENAMHI
 
-Generado: 2026-11-05 16:17:52
+Generado: 2026-11-05 16:39:38
 
-Script fuente: `src/benchmarking/benchmark_rendimiento.py` (reproducible, no requiere HDFS; Spark local[2], 1.5 GB driver).
-
-
-## 3.6 Optimizacion del rendimiento
-
-**Tecnica aplicada:** cacheo (`.cache()`) del DataFrame ya filtrado (Departamento = La Libertad, periodo 2015-2024, semanas validas), antes de las acciones repetidas (`count`, `groupBy`, `distinct`, `dropDuplicates`).
-
-**Por que funciona:** sin cache, cada accion posterior recalcula el plan logico completo desde la lectura del CSV (hay 4 acciones encadenadas sobre el mismo filtrado). Con `.cache()` el resultado filtrado se materializa en memoria tras la primera accion y las siguientes lo reutilizan en vez de reprocesar el CSV y los filtros.
+Script fuente: `src/benchmarking/benchmark_rendimiento.py` (reproducible, no requiere HDFS; Spark local[2], 1.5 GB driver). Corre sobre los 3 datasets reales del proyecto.
 
 
-### Tabla de repeticiones (3 corridas por modo, dataset real)
+## 3.6 Optimizacion del rendimiento (los 3 datasets)
+
+**Tecnica aplicada:** `.cache()` del DataFrame tras los filtros, antes de las acciones repetidas (`count`, `groupBy`, `distinct`, `dropDuplicates`). Es la misma tecnica aplicada en `limpiar_ira.py`, `limpiar_malaria.py` y `limpiar_senamhi.py`.
+
+
+### IRA
 
 | Repeticion | Sin cache (s) | Con cache (s) |
 |---|---|---|
-| 1 | 1.99 | 1.69 |
-| 2 | 1.75 | 1.81 |
-| 3 | 1.78 | 1.57 |
-| **Promedio** | **1.84** | **1.69** |
+| 1 | 2.12 | 1.79 |
+| 2 | 1.8 | 1.63 |
+| 3 | 1.58 | 1.56 |
+| **Promedio** | **1.83** | **1.66** |
 
-Mejora promedio: **8.2%** menos tiempo con cache.
-
-Planes de ejecucion capturados: `docs/evidencias/plan_sin_cache.txt` y `docs/evidencias/plan_con_cache.txt` (buscar `InMemoryTableScan` en el segundo, ausente en el primero).
+Mejora: **9.5%** menos tiempo con cache. Planes: `plan_sin_cache_IRA.txt` / `plan_con_cache_IRA.txt`.
 
 
-## 3.7 Prueba de escalabilidad
+### MALARIA
 
-Conjunto real: `IRA_La_Libertad_2015_2024.csv` (38086 filas). Replicas x10 y x100 generadas solo para medir el pipeline (no se usan en el analisis exploratorio, el entrenamiento ni conclusiones de negocio).
+| Repeticion | Sin cache (s) | Con cache (s) |
+|---|---|---|
+| 1 | 0.98 | 1.04 |
+| 2 | 0.96 | 0.98 |
+| 3 | 0.98 | 0.98 |
+| **Promedio** | **0.97** | **1.00** |
+
+Mejora: **-2.7%** menos tiempo con cache. Planes: `plan_sin_cache_MALARIA.txt` / `plan_con_cache_MALARIA.txt`.
 
 
-### Tabla de tiempos y consumo de recursos
+### SENAMHI
+
+| Repeticion | Sin cache (s) | Con cache (s) |
+|---|---|---|
+| 1 | 1.83 | 1.5 |
+| 2 | 1.89 | 1.35 |
+| 3 | 1.75 | 1.32 |
+| **Promedio** | **1.82** | **1.39** |
+
+Mejora: **23.8%** menos tiempo con cache. Planes: `plan_sin_cache_SENAMHI.txt` / `plan_con_cache_SENAMHI.txt`.
+
+
+## 3.7 Prueba de escalabilidad (los 3 datasets)
+
+Replicas x10 y x100 de cada conjunto real, usadas solo para medir el pipeline (no se usan en el analisis exploratorio, el entrenamiento ni conclusiones de negocio).
+
+
+### IRA
 
 | Factor | Filas | Tiempo (s) | CPU prom (%) | CPU max (%) | Mem prom (MB) | Mem pico (MB) |
 |---|---|---|---|---|---|---|
-| x1 | 38086 | 1.62 | 2.6 | 5.8 | 606.2 | 731.9 |
-| x10 | 380860 | 3.7 | 2.1 | 3.9 | 711.9 | 803.5 |
-| x100 | 3808600 | 17.57 | 1.6 | 4.0 | 1006.7 | 1038.5 |
+| x1 | 38086 | 1.56 | 2.6 | 5.8 | 711.7 | 860.7 |
+| x10 | 380860 | 3.42 | 1.7 | 3.9 | 818.7 | 943.5 |
+| x100 | 3808600 | 17.86 | 1.6 | 5.8 | 917.7 | 953.7 |
 
-### Analisis
+- x10: volumen x10, tiempo x2.19 (sublineal/estable).
 
-- x10: volumen x10, tiempo x2.28 (sublineal/estable).
-- x100: volumen x100, tiempo x10.85 (sublineal/estable).
+- x100: volumen x100, tiempo x11.45 (sublineal/estable).
 
-_(Completar manualmente tras ver los numeros: indicar si el crecimiento del tiempo fue proporcional al volumen o se degrado antes, y en que factor una sola maquina con estos recursos dejaria de alcanzar, segun la tendencia de memoria pico observada.)_
+### MALARIA
+
+| Factor | Filas | Tiempo (s) | CPU prom (%) | CPU max (%) | Mem prom (MB) | Mem pico (MB) |
+|---|---|---|---|---|---|---|
+| x1 | 490 | 0.93 | 3.1 | 7.8 | 886.5 | 1108.3 |
+| x10 | 4900 | 1.05 | 2.6 | 7.9 | 925.2 | 1113.6 |
+| x100 | 49000 | 1.56 | 2.3 | 5.9 | 960.4 | 1124.2 |
+
+- x10: volumen x10, tiempo x1.13 (sublineal/estable).
+
+- x100: volumen x100, tiempo x1.68 (sublineal/estable).
+
+### SENAMHI
+
+| Factor | Filas | Tiempo (s) | CPU prom (%) | CPU max (%) | Mem prom (MB) | Mem pico (MB) |
+|---|---|---|---|---|---|---|
+| x1 | 36530 | 1.44 | 2.7 | 3.9 | 926.0 | 1159.3 |
+| x10 | 365300 | 3.84 | 2.6 | 5.9 | 1043.5 | 1162.2 |
+| x100 | 3653000 | 17.87 | 1.6 | 3.9 | 1155.3 | 1253.5 |
+
+- x10: volumen x10, tiempo x2.67 (sublineal/estable).
+
+- x100: volumen x100, tiempo x12.41 (sublineal/estable).

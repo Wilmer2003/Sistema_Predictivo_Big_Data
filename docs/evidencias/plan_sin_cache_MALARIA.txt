@@ -1,0 +1,48 @@
+== Physical Plan ==
+AdaptiveSparkPlan (7)
++- HashAggregate (6)
+   +- Exchange (5)
+      +- HashAggregate (4)
+         +- Project (3)
+            +- Filter (2)
+               +- Scan csv  (1)
+
+
+(1) Scan csv 
+Output [17]: [departamento#13171, provincia#13172, distrito#13173, localidad#13174, enfermedad#13175, ano#13176, semana#13177, diagnostic#13178, diresa#13179, ubigeo#13180, localcod#13181, edad#13182, tipo_edad#13183, sexo#13184, Malaria_total#13185, B50#13186, B51#13187]
+Batched: false
+Location: InMemoryFileIndex [file:/home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/Malaria_La_Libertad_2015_2024.csv]
+PushedFilters: [GreaterThanOrEqual(ano,2015), LessThanOrEqual(ano,2024), GreaterThanOrEqual(semana,1), LessThanOrEqual(semana,53)]
+ReadSchema: struct<departamento:string,provincia:string,distrito:string,localidad:string,enfermedad:string,ano:int,semana:int,diagnostic:string,diresa:int,ubigeo:int,localcod:int,edad:int,tipo_edad:string,sexo:string,Malaria_total:int,B50:int,B51:int>
+
+(2) Filter
+Input [17]: [departamento#13171, provincia#13172, distrito#13173, localidad#13174, enfermedad#13175, ano#13176, semana#13177, diagnostic#13178, diresa#13179, ubigeo#13180, localcod#13181, edad#13182, tipo_edad#13183, sexo#13184, Malaria_total#13185, B50#13186, B51#13187]
+Condition : (((((atleastnnonnulls(1, trim(departamento#13171, None), trim(provincia#13172, None), trim(distrito#13173, None), trim(localidad#13174, None), trim(enfermedad#13175, None), ano#13176, semana#13177, trim(diagnostic#13178, None), trim(cast(diresa#13179 as string), None), lpad(regexp_replace(cast(ubigeo#13180 as string), \.0$, , 1), 6, 0), lpad(regexp_replace(cast(localcod#13181 as string), \.0$, , 1), 10, 0), edad#13182, trim(tipo_edad#13183, None), trim(sexo#13184, None), Malaria_total#13185, B50#13186, B51#13187) AND (upper(trim(trim(departamento#13171, None), None)) = LA LIBERTAD)) AND (ano#13176 >= 2015)) AND (ano#13176 <= 2024)) AND (semana#13177 >= 1)) AND (semana#13177 <= 53))
+
+(3) Project
+Output [17]: [trim(departamento#13171, None) AS departamento#13205, trim(provincia#13172, None) AS provincia#13224, trim(distrito#13173, None) AS distrito#13242, trim(localidad#13174, None) AS localidad#13260, trim(enfermedad#13175, None) AS enfermedad#13278, ano#13176, semana#13177, trim(diagnostic#13178, None) AS diagnostic#13296, trim(cast(diresa#13179 as string), None) AS diresa#13314, lpad(regexp_replace(cast(ubigeo#13180 as string), \.0$, , 1), 6, 0) AS ubigeo#13386, lpad(regexp_replace(cast(localcod#13181 as string), \.0$, , 1), 10, 0) AS localcod#13422, edad#13182, trim(tipo_edad#13183, None) AS tipo_edad#13332, trim(sexo#13184, None) AS sexo#13350, Malaria_total#13185, B50#13186, B51#13187]
+Input [17]: [departamento#13171, provincia#13172, distrito#13173, localidad#13174, enfermedad#13175, ano#13176, semana#13177, diagnostic#13178, diresa#13179, ubigeo#13180, localcod#13181, edad#13182, tipo_edad#13183, sexo#13184, Malaria_total#13185, B50#13186, B51#13187]
+
+(4) HashAggregate
+Input [17]: [departamento#13205, provincia#13224, distrito#13242, localidad#13260, enfermedad#13278, ano#13176, semana#13177, diagnostic#13296, diresa#13314, ubigeo#13386, localcod#13422, edad#13182, tipo_edad#13332, sexo#13350, Malaria_total#13185, B50#13186, B51#13187]
+Keys [17]: [localidad#13260, distrito#13242, enfermedad#13278, ubigeo#13386, tipo_edad#13332, diagnostic#13296, ano#13176, semana#13177, localcod#13422, Malaria_total#13185, sexo#13350, provincia#13224, diresa#13314, edad#13182, B51#13187, departamento#13205, B50#13186]
+Functions: []
+Aggregate Attributes: []
+Results [17]: [localidad#13260, distrito#13242, enfermedad#13278, ubigeo#13386, tipo_edad#13332, diagnostic#13296, ano#13176, semana#13177, localcod#13422, Malaria_total#13185, sexo#13350, provincia#13224, diresa#13314, edad#13182, B51#13187, departamento#13205, B50#13186]
+
+(5) Exchange
+Input [17]: [localidad#13260, distrito#13242, enfermedad#13278, ubigeo#13386, tipo_edad#13332, diagnostic#13296, ano#13176, semana#13177, localcod#13422, Malaria_total#13185, sexo#13350, provincia#13224, diresa#13314, edad#13182, B51#13187, departamento#13205, B50#13186]
+Arguments: hashpartitioning(localidad#13260, distrito#13242, enfermedad#13278, ubigeo#13386, tipo_edad#13332, diagnostic#13296, ano#13176, semana#13177, localcod#13422, Malaria_total#13185, sexo#13350, provincia#13224, diresa#13314, edad#13182, B51#13187, departamento#13205, B50#13186, 4), ENSURE_REQUIREMENTS, [plan_id=3933]
+
+(6) HashAggregate
+Input [17]: [localidad#13260, distrito#13242, enfermedad#13278, ubigeo#13386, tipo_edad#13332, diagnostic#13296, ano#13176, semana#13177, localcod#13422, Malaria_total#13185, sexo#13350, provincia#13224, diresa#13314, edad#13182, B51#13187, departamento#13205, B50#13186]
+Keys [17]: [localidad#13260, distrito#13242, enfermedad#13278, ubigeo#13386, tipo_edad#13332, diagnostic#13296, ano#13176, semana#13177, localcod#13422, Malaria_total#13185, sexo#13350, provincia#13224, diresa#13314, edad#13182, B51#13187, departamento#13205, B50#13186]
+Functions: []
+Aggregate Attributes: []
+Results [17]: [departamento#13205, provincia#13224, distrito#13242, localidad#13260, enfermedad#13278, ano#13176, semana#13177, diagnostic#13296, diresa#13314, ubigeo#13386, localcod#13422, edad#13182, tipo_edad#13332, sexo#13350, Malaria_total#13185, B50#13186, B51#13187]
+
+(7) AdaptiveSparkPlan
+Output [17]: [departamento#13205, provincia#13224, distrito#13242, localidad#13260, enfermedad#13278, ano#13176, semana#13177, diagnostic#13296, diresa#13314, ubigeo#13386, localcod#13422, edad#13182, tipo_edad#13332, sexo#13350, Malaria_total#13185, B50#13186, B51#13187]
+Arguments: isFinalPlan=false
+
+

@@ -1,31 +1,33 @@
 """
 Benchmark para los puntos 3.6 (optimizacion del rendimiento) y
-3.7 (prueba de escalabilidad) del informe.
+3.7 (prueba de escalabilidad) del informe, sobre los 3 datasets
+reales del proyecto (IRA, Malaria, SENAMHI).
 
 Se ejecuta en modo local con recursos limitados a proposito
 (local[2], 1.5 GB de memoria de driver, UI de Spark apagada) para
 no competir por CPU/RAM con otras aplicaciones (videollamada,
 navegador) mientras corre.
 
-Dataset real usado: IRA_La_Libertad_2015_2024.csv (salida ya
-filtrada a La Libertad, 38 087 filas). Las replicas x10 y x100
-se generan solo para medir el comportamiento del pipeline, tal
-como exige la guia: no se usan en el analisis exploratorio ni en
-el entrenamiento del modelo.
+Datasets reales usados (salidas ya filtradas a La Libertad):
+  - IRA_La_Libertad_2015_2024.csv       (38 086 filas)
+  - Malaria_La_Libertad_2015_2024.csv   (490 filas)
+  - Clima_La_Libertad_2015_2024.csv     (36 530 filas, dataset SENAMHI)
 
-Salidas (docs/evidencias/):
-  - resultados_3_6_optimizacion.csv
-  - resultados_3_7_escalabilidad.csv
-  - plan_sin_cache.txt / plan_con_cache.txt   (planes de ejecucion)
-  - log_ejecucion.txt                         (log completo, con hora real)
-  - resumen_3_6_3_7.md                        (tablas listas para pegar)
+Las replicas x10 y x100 se generan solo para medir el comportamiento
+del pipeline: no se usan en el analisis exploratorio, en el
+entrenamiento del modelo ni en conclusiones de negocio.
+
+Salidas (docs/evidencias/), por dataset <N> en {IRA, MALARIA, SENAMHI}:
+  - resultados_3_6_optimizacion_<N>.csv
+  - resultados_3_7_escalabilidad_<N>.csv
+  - plan_sin_cache_<N>.txt / plan_con_cache_<N>.txt   (planes de ejecucion)
+  - log_ejecucion.txt                                 (log unico, con hora real)
+  - resumen_3_6_3_7.md                                (tablas listas para pegar, las 3)
 """
 
-import json
 import os
 import shutil
 import statistics
-import sys
 import threading
 import time
 from contextlib import redirect_stdout
@@ -36,7 +38,6 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lpad, regexp_replace, trim, upper
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATASET_REAL = os.path.join(BASE_DIR, "IRA_La_Libertad_2015_2024.csv")
 OUT_DIR = os.path.join(BASE_DIR, "docs", "evidencias")
 WORK_DIR = os.path.join(OUT_DIR, "_tmp_benchmark")
 
@@ -55,6 +56,128 @@ def log(mensaje):
     print(linea)
     _log_file.write(linea + "\n")
     _log_file.flush()
+
+
+# ============================================================
+# Transformaciones reales por dataset (fieles a src/preprocessing/*.py)
+# ============================================================
+
+def limpiar_ira(df, usar_cache):
+    for columna in ["Departamento", "Provincia", "Distrito"]:
+        if columna in df.columns:
+            df = df.withColumn(columna, trim(col(columna)))
+
+    if "Codigo_Ubigeo" in df.columns:
+        df = (
+            df
+            .withColumn("Codigo_Ubigeo", regexp_replace(col("Codigo_Ubigeo").cast("string"), r"\.0$", ""))
+            .withColumn("Codigo_Ubigeo", lpad(col("Codigo_Ubigeo"), 6, "0"))
+        )
+
+    df = df.withColumn("Ano", col("Ano").cast("integer"))
+    df = df.withColumn("Semana_Epidemiologica", col("Semana_Epidemiologica").cast("integer"))
+    df = df.dropna(how="all")
+    df = df.filter(upper(trim(col("Departamento"))) == "LA LIBERTAD")
+    df = df.filter((col("Ano") >= 2015) & (col("Ano") <= 2024))
+    df = df.filter((col("Semana_Epidemiologica") >= 1) & (col("Semana_Epidemiologica") <= 53))
+
+    if usar_cache:
+        df = df.cache()
+        df.count()
+
+    df.groupBy("Ano").count().orderBy("Ano").collect()
+    df.select("Departamento").distinct().collect()
+    df = df.dropDuplicates()
+    return df, df.count()
+
+
+def limpiar_malaria(df, usar_cache):
+    for columna in ["departamento", "provincia", "distrito", "localidad", "enfermedad", "diagnostic", "diresa", "tipo_edad", "sexo"]:
+        if columna in df.columns:
+            df = df.withColumn(columna, trim(col(columna)))
+
+    if "ubigeo" in df.columns:
+        df = (
+            df
+            .withColumn("ubigeo", regexp_replace(col("ubigeo").cast("string"), r"\.0$", ""))
+            .withColumn("ubigeo", lpad(col("ubigeo"), 6, "0"))
+        )
+    if "localcod" in df.columns:
+        df = (
+            df
+            .withColumn("localcod", regexp_replace(col("localcod").cast("string"), r"\.0$", ""))
+            .withColumn("localcod", lpad(col("localcod"), 10, "0"))
+        )
+
+    for columna in ["ano", "semana", "edad", "Malaria_total", "B50", "B51"]:
+        if columna in df.columns:
+            df = df.withColumn(columna, col(columna).cast("integer"))
+
+    df = df.dropna(how="all")
+    df = df.filter(upper(trim(col("departamento"))) == "LA LIBERTAD")
+    df = df.filter((col("ano") >= 2015) & (col("ano") <= 2024))
+    df = df.filter((col("semana") >= 1) & (col("semana") <= 53))
+
+    if usar_cache:
+        df = df.cache()
+        df.count()
+
+    df.groupBy("ano").count().orderBy("ano").collect()
+    df.select("provincia").distinct().collect()
+    df = df.dropDuplicates()
+    return df, df.count()
+
+
+def limpiar_senamhi(df, usar_cache):
+    df = df.withColumn("Departamento", trim(col("Departamento")))
+    for columna in ["Ano", "Mes", "Dia"]:
+        if columna in df.columns:
+            df = df.withColumn(columna, col(columna).cast("integer"))
+    for columna in ["Precipitacion_acumulada", "Temperatura_maxima", "Temperatura_minima", "tc"]:
+        if columna in df.columns:
+            df = df.withColumn(columna, col(columna).cast("double"))
+
+    df = df.dropna(how="all")
+    df = df.filter(upper(trim(col("Departamento"))) == "LA LIBERTAD")
+    df = df.filter((col("Ano") >= 2015) & (col("Ano") <= 2024))
+
+    if usar_cache:
+        df = df.cache()
+        df.count()
+
+    registros_antes = df.count()
+    df = df.filter(
+        (col("Precipitacion_acumulada") >= 0)
+        & (col("Temperatura_minima") <= col("Temperatura_maxima"))
+    )
+    log(f"  control de rango: {registros_antes} -> {df.count()}")
+
+    df.groupBy("Ano").count().orderBy("Ano").collect()
+    df.select("Estacion").distinct().collect()
+    df = df.dropDuplicates(["Estacion", "Fecha"])
+    return df, df.count()
+
+
+DATASETS = [
+    {
+        "nombre": "IRA",
+        "csv": os.path.join(BASE_DIR, "IRA_La_Libertad_2015_2024.csv"),
+        "sep": ";",
+        "limpiar": limpiar_ira,
+    },
+    {
+        "nombre": "MALARIA",
+        "csv": os.path.join(BASE_DIR, "Malaria_La_Libertad_2015_2024.csv"),
+        "sep": ",",
+        "limpiar": limpiar_malaria,
+    },
+    {
+        "nombre": "SENAMHI",
+        "csv": os.path.join(BASE_DIR, "Clima_La_Libertad_2015_2024.csv"),
+        "sep": ",",
+        "limpiar": limpiar_senamhi,
+    },
+]
 
 
 class MonitorRecursos:
@@ -82,8 +205,6 @@ class MonitorRecursos:
                 for p in procesos:
                     try:
                         if p.pid not in self._vistos:
-                            # primer avistamiento: solo establece la linea base,
-                            # no se usa esta lectura (evita picos espurios)
                             p.cpu_percent(None)
                             self._vistos[p.pid] = True
                             continue
@@ -131,55 +252,23 @@ def nueva_sesion():
     )
 
 
-def leer_csv(spark, ruta):
+def leer_csv(spark, ruta, sep):
     return (
         spark.read
         .option("header", True)
         .option("inferSchema", True)
         .option("encoding", "UTF-8")
-        .option("sep", ";")
+        .option("sep", sep)
         .csv(ruta)
     )
 
 
-def limpiar(df, usar_cache):
-    """Replica las transformaciones reales de src/preprocessing/limpiar_ira.py."""
-    for columna in ["Departamento", "Provincia", "Distrito"]:
-        if columna in df.columns:
-            df = df.withColumn(columna, trim(col(columna)))
-
-    if "Codigo_Ubigeo" in df.columns:
-        df = (
-            df
-            .withColumn("Codigo_Ubigeo", regexp_replace(col("Codigo_Ubigeo").cast("string"), r"\.0$", ""))
-            .withColumn("Codigo_Ubigeo", lpad(col("Codigo_Ubigeo"), 6, "0"))
-        )
-
-    df = df.withColumn("Ano", col("Ano").cast("integer"))
-    df = df.withColumn("Semana_Epidemiologica", col("Semana_Epidemiologica").cast("integer"))
-    df = df.dropna(how="all")
-    df = df.filter(upper(trim(col("Departamento"))) == "LA LIBERTAD")
-    df = df.filter((col("Ano") >= 2015) & (col("Ano") <= 2024))
-    df = df.filter((col("Semana_Epidemiologica") >= 1) & (col("Semana_Epidemiologica") <= 53))
-
-    if usar_cache:
-        df = df.cache()
-        df.count()
-
-    # Mismas acciones que dispara el script real (count/groupBy/distinct/dropDuplicates)
-    df.groupBy("Ano").count().orderBy("Ano").collect()
-    df.select("Departamento").distinct().collect()
-    df = df.dropDuplicates()
-    total = df.count()
-    return df, total
-
-
-def correr_pipeline(ruta_csv, usar_cache, capturar_plan=None):
+def correr_pipeline(ds, ruta_csv, usar_cache, capturar_plan=None):
     spark = nueva_sesion()
     try:
         inicio = time.perf_counter()
-        df = leer_csv(spark, ruta_csv)
-        df_final, total = limpiar(df, usar_cache)
+        df = leer_csv(spark, ruta_csv, ds["sep"])
+        df_final, total = ds["limpiar"](df, usar_cache)
         fin = time.perf_counter()
 
         if capturar_plan:
@@ -193,8 +282,8 @@ def correr_pipeline(ruta_csv, usar_cache, capturar_plan=None):
         time.sleep(1)  # deja liberar el puerto/JVM antes de la siguiente corrida
 
 
-def generar_replica(factor, destino):
-    with open(DATASET_REAL, "r", encoding="utf-8") as f:
+def generar_replica(csv_real, factor, destino):
+    with open(csv_real, "r", encoding="utf-8") as f:
         lineas = f.readlines()
     encabezado, filas = lineas[0], lineas[1:]
     with open(destino, "w", encoding="utf-8") as f:
@@ -204,27 +293,24 @@ def generar_replica(factor, destino):
     return len(filas) * factor
 
 
-def parte_3_6():
-    log("===== 3.6 OPTIMIZACION DEL RENDIMIENTO =====")
+def parte_3_6(ds):
+    nombre = ds["nombre"]
+    log(f"===== 3.6 OPTIMIZACION DEL RENDIMIENTO ({nombre}) =====")
     resultados = []
 
-    correr_pipeline(
-        DATASET_REAL, usar_cache=False,
-        capturar_plan=os.path.join(OUT_DIR, "plan_sin_cache.txt"),
-    )
-    correr_pipeline(
-        DATASET_REAL, usar_cache=True,
-        capturar_plan=os.path.join(OUT_DIR, "plan_con_cache.txt"),
-    )
+    correr_pipeline(ds, ds["csv"], usar_cache=False,
+                     capturar_plan=os.path.join(OUT_DIR, f"plan_sin_cache_{nombre}.txt"))
+    correr_pipeline(ds, ds["csv"], usar_cache=True,
+                     capturar_plan=os.path.join(OUT_DIR, f"plan_con_cache_{nombre}.txt"))
 
     for rep in range(1, REPETICIONES + 1):
         for modo, usar_cache in [("sin_cache", False), ("con_cache", True)]:
-            tiempo, total = correr_pipeline(DATASET_REAL, usar_cache)
-            log(f"3.6 rep={rep} modo={modo} tiempo={tiempo:.2f}s filas_final={total}")
+            tiempo, total = correr_pipeline(ds, ds["csv"], usar_cache)
+            log(f"3.6 [{nombre}] rep={rep} modo={modo} tiempo={tiempo:.2f}s filas_final={total}")
             resultados.append({"repeticion": rep, "modo": modo, "tiempo_segundos": round(tiempo, 2)})
             time.sleep(1)
 
-    ruta_csv = os.path.join(OUT_DIR, "resultados_3_6_optimizacion.csv")
+    ruta_csv = os.path.join(OUT_DIR, f"resultados_3_6_optimizacion_{nombre}.csv")
     with open(ruta_csv, "w", encoding="utf-8") as f:
         f.write("repeticion,modo,tiempo_segundos\n")
         for r in resultados:
@@ -233,23 +319,24 @@ def parte_3_6():
     return resultados
 
 
-def parte_3_7():
-    log("===== 3.7 PRUEBA DE ESCALABILIDAD =====")
+def parte_3_7(ds):
+    nombre = ds["nombre"]
+    log(f"===== 3.7 PRUEBA DE ESCALABILIDAD ({nombre}) =====")
     resultados = []
 
     for factor in FACTORES_ESCALABILIDAD:
-        ruta_replica = os.path.join(WORK_DIR, f"replica_x{factor}.csv")
-        filas = generar_replica(factor, ruta_replica)
-        log(f"Replica x{factor} generada: {filas} filas, "
+        ruta_replica = os.path.join(WORK_DIR, f"replica_{nombre}_x{factor}.csv")
+        filas = generar_replica(ds["csv"], factor, ruta_replica)
+        log(f"[{nombre}] Replica x{factor} generada: {filas} filas, "
             f"{os.path.getsize(ruta_replica) / (1024*1024):.1f} MB")
 
         monitor = MonitorRecursos(intervalo=0.5)
         monitor.iniciar()
-        tiempo, total = correr_pipeline(ruta_replica, usar_cache=True)
+        tiempo, total = correr_pipeline(ds, ruta_replica, usar_cache=True)
         monitor.detener()
         resumen = monitor.resumen()
 
-        log(f"x{factor}: tiempo={tiempo:.2f}s filas_final={total} "
+        log(f"[{nombre}] x{factor}: tiempo={tiempo:.2f}s filas_final={total} "
             f"cpu_prom={resumen['cpu_prom_pct']}% cpu_max={resumen['cpu_max_pct']}% "
             f"mem_prom={resumen['mem_prom_mb']}MB mem_pico={resumen['mem_pico_mb']}MB")
 
@@ -260,7 +347,7 @@ def parte_3_7():
         os.remove(ruta_replica)
         time.sleep(2)  # pausa entre corridas para no mantener la CPU cargada
 
-    ruta_csv = os.path.join(OUT_DIR, "resultados_3_7_escalabilidad.csv")
+    ruta_csv = os.path.join(OUT_DIR, f"resultados_3_7_escalabilidad_{nombre}.csv")
     with open(ruta_csv, "w", encoding="utf-8") as f:
         f.write("factor,filas_entrada,filas_final,tiempo_segundos,cpu_prom_pct,cpu_max_pct,mem_prom_mb,mem_pico_mb\n")
         for r in resultados:
@@ -272,7 +359,7 @@ def parte_3_7():
     return resultados
 
 
-def generar_resumen_md(res_3_6, res_3_7):
+def tabla_3_6_md(nombre, res_3_6):
     por_modo = {}
     for r in res_3_6:
         por_modo.setdefault(r["modo"], []).append(r["tiempo_segundos"])
@@ -280,28 +367,7 @@ def generar_resumen_md(res_3_6, res_3_7):
     prom_con = statistics.mean(por_modo["con_cache"])
     mejora_pct = (prom_sin - prom_con) / prom_sin * 100
 
-    base = res_3_7[0]
-    filas_1x = base["filas_entrada"]
-    tiempo_1x = base["tiempo_segundos"]
-
-    lineas = []
-    lineas.append("# Evidencia 3.6 y 3.7 (Anexo C)\n")
-    lineas.append(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    lineas.append("Script fuente: `src/benchmarking/benchmark_rendimiento.py` "
-                   "(reproducible, no requiere HDFS; Spark local[2], 1.5 GB driver).\n")
-
-    lineas.append("\n## 3.6 Optimizacion del rendimiento\n")
-    lineas.append("**Tecnica aplicada:** cacheo (`.cache()`) del DataFrame ya filtrado "
-                   "(Departamento = La Libertad, periodo 2015-2024, semanas validas), "
-                   "antes de las acciones repetidas (`count`, `groupBy`, `distinct`, "
-                   "`dropDuplicates`).\n")
-    lineas.append("**Por que funciona:** sin cache, cada accion posterior recalcula el plan "
-                   "logico completo desde la lectura del CSV (hay 4 acciones encadenadas sobre "
-                   "el mismo filtrado). Con `.cache()` el resultado filtrado se materializa en "
-                   "memoria tras la primera accion y las siguientes lo reutilizan en vez de "
-                   "reprocesar el CSV y los filtros.\n")
-
-    lineas.append("\n### Tabla de repeticiones (3 corridas por modo, dataset real)\n")
+    lineas = [f"\n### {nombre}\n"]
     lineas.append("| Repeticion | Sin cache (s) | Con cache (s) |")
     lineas.append("|---|---|---|")
     for rep in range(1, REPETICIONES + 1):
@@ -309,17 +375,13 @@ def generar_resumen_md(res_3_6, res_3_7):
         con = next(r["tiempo_segundos"] for r in res_3_6 if r["repeticion"] == rep and r["modo"] == "con_cache")
         lineas.append(f"| {rep} | {sin} | {con} |")
     lineas.append(f"| **Promedio** | **{prom_sin:.2f}** | **{prom_con:.2f}** |")
-    lineas.append(f"\nMejora promedio: **{mejora_pct:.1f}%** menos tiempo con cache.\n")
-    lineas.append("Planes de ejecucion capturados: `docs/evidencias/plan_sin_cache.txt` "
-                   "y `docs/evidencias/plan_con_cache.txt` (buscar `InMemoryTableScan` en el "
-                   "segundo, ausente en el primero).\n")
+    lineas.append(f"\nMejora: **{mejora_pct:.1f}%** menos tiempo con cache. "
+                  f"Planes: `plan_sin_cache_{nombre}.txt` / `plan_con_cache_{nombre}.txt`.\n")
+    return "\n".join(lineas)
 
-    lineas.append("\n## 3.7 Prueba de escalabilidad\n")
-    lineas.append(f"Conjunto real: `IRA_La_Libertad_2015_2024.csv` ({filas_1x} filas). "
-                   "Replicas x10 y x100 generadas solo para medir el pipeline (no se usan en "
-                   "el analisis exploratorio, el entrenamiento ni conclusiones de negocio).\n")
 
-    lineas.append("\n### Tabla de tiempos y consumo de recursos\n")
+def tabla_3_7_md(nombre, res_3_7):
+    lineas = [f"\n### {nombre}\n"]
     lineas.append("| Factor | Filas | Tiempo (s) | CPU prom (%) | CPU max (%) | Mem prom (MB) | Mem pico (MB) |")
     lineas.append("|---|---|---|---|---|---|---|")
     for r in res_3_7:
@@ -327,21 +389,39 @@ def generar_resumen_md(res_3_6, res_3_7):
             f"| x{r['factor']} | {r['filas_entrada']} | {r['tiempo_segundos']} | "
             f"{r['cpu_prom_pct']} | {r['cpu_max_pct']} | {r['mem_prom_mb']} | {r['mem_pico_mb']} |"
         )
-
-    lineas.append("\n### Analisis\n")
+    tiempo_1x = res_3_7[0]["tiempo_segundos"]
     for r in res_3_7[1:]:
         factor_volumen = r["factor"] / res_3_7[0]["factor"]
         factor_tiempo = r["tiempo_segundos"] / tiempo_1x
         lineas.append(
-            f"- x{r['factor']}: volumen x{factor_volumen:.0f}, tiempo x{factor_tiempo:.2f} "
+            f"\n- x{r['factor']}: volumen x{factor_volumen:.0f}, tiempo x{factor_tiempo:.2f} "
             f"({'sublineal/estable' if factor_tiempo <= factor_volumen else 'se degrada mas rapido que el volumen'})."
         )
+    return "\n".join(lineas)
 
-    lineas.append(
-        "\n_(Completar manualmente tras ver los numeros: indicar si el crecimiento del tiempo "
-        "fue proporcional al volumen o se degrado antes, y en que factor una sola maquina con "
-        "estos recursos dejaria de alcanzar, segun la tendencia de memoria pico observada.)_\n"
-    )
+
+def generar_resumen_md(resultados_por_dataset):
+    lineas = []
+    lineas.append("# Evidencia 3.6 y 3.7 (Anexo C) — IRA, Malaria, SENAMHI\n")
+    lineas.append(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    lineas.append("Script fuente: `src/benchmarking/benchmark_rendimiento.py` "
+                   "(reproducible, no requiere HDFS; Spark local[2], 1.5 GB driver). "
+                   "Corre sobre los 3 datasets reales del proyecto.\n")
+
+    lineas.append("\n## 3.6 Optimizacion del rendimiento (los 3 datasets)\n")
+    lineas.append("**Tecnica aplicada:** `.cache()` del DataFrame tras los filtros, antes de "
+                   "las acciones repetidas (`count`, `groupBy`, `distinct`, `dropDuplicates`). "
+                   "Es la misma tecnica aplicada en `limpiar_ira.py`, `limpiar_malaria.py` y "
+                   "`limpiar_senamhi.py`.\n")
+    for nombre, (res_3_6, _res_3_7) in resultados_por_dataset.items():
+        lineas.append(tabla_3_6_md(nombre, res_3_6))
+
+    lineas.append("\n## 3.7 Prueba de escalabilidad (los 3 datasets)\n")
+    lineas.append("Replicas x10 y x100 de cada conjunto real, usadas solo para medir el "
+                   "pipeline (no se usan en el analisis exploratorio, el entrenamiento ni "
+                   "conclusiones de negocio).\n")
+    for nombre, (_res_3_6, res_3_7) in resultados_por_dataset.items():
+        lineas.append(tabla_3_7_md(nombre, res_3_7))
 
     ruta_md = os.path.join(OUT_DIR, "resumen_3_6_3_7.md")
     with open(ruta_md, "w", encoding="utf-8") as f:
@@ -350,10 +430,13 @@ def generar_resumen_md(res_3_6, res_3_7):
 
 
 def main():
-    log("Inicio de benchmark 3.6 / 3.7")
-    res_3_6 = parte_3_6()
-    res_3_7 = parte_3_7()
-    generar_resumen_md(res_3_6, res_3_7)
+    log("Inicio de benchmark 3.6 / 3.7 (IRA, Malaria, SENAMHI)")
+    resultados_por_dataset = {}
+    for ds in DATASETS:
+        res_3_6 = parte_3_6(ds)
+        res_3_7 = parte_3_7(ds)
+        resultados_por_dataset[ds["nombre"]] = (res_3_6, res_3_7)
+    generar_resumen_md(resultados_por_dataset)
     shutil.rmtree(WORK_DIR, ignore_errors=True)
     log("Benchmark finalizado.")
 
