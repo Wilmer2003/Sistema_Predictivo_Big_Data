@@ -1,0 +1,17 @@
+[2026-11-05 16:16:37] Inicio de benchmark 3.6 / 3.7
+[2026-11-05 16:16:37] ===== 3.6 OPTIMIZACION DEL RENDIMIENTO =====
+[2026-11-05 16:16:57] 3.6 rep=1 modo=sin_cache tiempo=1.99s filas_final=38085
+[2026-11-05 16:17:01] 3.6 rep=1 modo=con_cache tiempo=1.69s filas_final=38085
+[2026-11-05 16:17:05] 3.6 rep=2 modo=sin_cache tiempo=1.75s filas_final=38085
+[2026-11-05 16:17:09] 3.6 rep=2 modo=con_cache tiempo=1.81s filas_final=38085
+[2026-11-05 16:17:13] 3.6 rep=3 modo=sin_cache tiempo=1.78s filas_final=38085
+[2026-11-05 16:17:17] 3.6 rep=3 modo=con_cache tiempo=1.57s filas_final=38085
+[2026-11-05 16:17:18] ===== 3.7 PRUEBA DE ESCALABILIDAD =====
+[2026-11-05 16:17:18] Replica x1 generada: 38086 filas, 2.3 MB
+[2026-11-05 16:17:21] x1: tiempo=1.62s filas_final=38085 cpu_prom=2.6% cpu_max=5.8% mem_prom=606.2MB mem_pico=731.9MB
+[2026-11-05 16:17:23] Replica x10 generada: 380860 filas, 23.1 MB
+[2026-11-05 16:17:28] x10: tiempo=3.70s filas_final=38085 cpu_prom=2.1% cpu_max=3.9% mem_prom=711.9MB mem_pico=803.5MB
+[2026-11-05 16:17:31] Replica x100 generada: 3808600 filas, 231.0 MB
+[2026-11-05 16:17:50] x100: tiempo=17.57s filas_final=38085 cpu_prom=1.6% cpu_max=4.0% mem_prom=1006.7MB mem_pico=1038.5MB
+[2026-11-05 16:17:52] Resumen escrito en /home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/docs/evidencias/resumen_3_6_3_7.md
+[2026-11-05 16:17:52] Benchmark finalizado.

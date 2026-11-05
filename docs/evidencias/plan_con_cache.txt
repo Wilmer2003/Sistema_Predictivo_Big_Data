@@ -1,0 +1,60 @@
+== Physical Plan ==
+AdaptiveSparkPlan (9)
++- HashAggregate (8)
+   +- Exchange (7)
+      +- HashAggregate (6)
+         +- InMemoryTableScan (1)
+               +- InMemoryRelation (2)
+                     +- * Project (5)
+                        +- * Filter (4)
+                           +- Scan csv  (3)
+
+
+(1) InMemoryTableScan
+Output [14]: [Departamento#292, Provincia#308, Distrito#323, Ano#368, Semana_Epidemiologica#383, Codigo_Departamento#269, Codigo_Ubigeo#353, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+Arguments: [Departamento#292, Provincia#308, Distrito#323, Ano#368, Semana_Epidemiologica#383, Codigo_Departamento#269, Codigo_Ubigeo#353, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+
+(2) InMemoryRelation
+Arguments: [Departamento#292, Provincia#308, Distrito#323, Ano#368, Semana_Epidemiologica#383, Codigo_Departamento#269, Codigo_Ubigeo#353, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277], CachedRDDBuilder(org.apache.spark.sql.execution.columnar.DefaultCachedBatchSerializer@6fca5eb7,StorageLevel(disk, memory, deserialized, 1 replicas),*(1) Project [trim(Departamento#264, None) AS Departamento#292, trim(Provincia#265, None) AS Provincia#308, trim(Distrito#266, None) AS Distrito#323, Ano#267, Semana_Epidemiologica#268, Codigo_Departamento#269, lpad(regexp_replace(cast(Codigo_Ubigeo#270 as string), \.0$, , 1), 6, 0) AS Codigo_Ubigeo#353, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
++- *(1) Filter (((((atleastnnonnulls(1, trim(Departamento#264, None), trim(Provincia#265, None), trim(Distrito#266, None), Ano#267, Semana_Epidemiologica#268, Codigo_Departamento#269, lpad(regexp_replace(cast(Codigo_Ubigeo#270 as string), \.0$, , 1), 6, 0), IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277) AND (upper(trim(trim(Departamento#264, None), None)) = LA LIBERTAD)) AND (Ano#267 >= 2015)) AND (Ano#267 <= 2024)) AND (Semana_Epidemiologica#268 >= 1)) AND (Semana_Epidemiologica#268 <= 53))
+   +- FileScan csv [Departamento#264,Provincia#265,Distrito#266,Ano#267,Semana_Epidemiologica#268,Codigo_Departamento#269,Codigo_Ubigeo#270,IRA_menores_2_meses#271,IRA_2_a_11_meses#272,IRA_1_a_4_anos#273,Neumonia_menores_2_meses#274,Neumonia_2_a_11_meses#275,Neumonia_1_a_4_anos#276,Defunciones#277] Batched: false, DataFilters: [atleastnnonnulls(1, trim(Departamento#264, None), trim(Provincia#265, None), trim(Distrito#266, ..., Format: CSV, Location: InMemoryFileIndex(1 paths)[file:/home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/IRA_La_Lib..., PartitionFilters: [], PushedFilters: [GreaterThanOrEqual(Ano,2015), LessThanOrEqual(Ano,2024), GreaterThanOrEqual(Semana_Epidemiologic..., ReadSchema: struct<Departamento:string,Provincia:string,Distrito:string,Ano:int,Semana_Epidemiologica:int,Cod...
+,None)
+
+(3) Scan csv 
+Output [14]: [Departamento#264, Provincia#265, Distrito#266, Ano#267, Semana_Epidemiologica#268, Codigo_Departamento#269, Codigo_Ubigeo#270, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+Batched: false
+Location: InMemoryFileIndex [file:/home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/IRA_La_Libertad_2015_2024.csv]
+PushedFilters: [GreaterThanOrEqual(Ano,2015), LessThanOrEqual(Ano,2024), GreaterThanOrEqual(Semana_Epidemiologica,1), LessThanOrEqual(Semana_Epidemiologica,53)]
+ReadSchema: struct<Departamento:string,Provincia:string,Distrito:string,Ano:int,Semana_Epidemiologica:int,Codigo_Departamento:int,Codigo_Ubigeo:int,IRA_menores_2_meses:int,IRA_2_a_11_meses:int,IRA_1_a_4_anos:int,Neumonia_menores_2_meses:int,Neumonia_2_a_11_meses:int,Neumonia_1_a_4_anos:int,Defunciones:int>
+
+(4) Filter [codegen id : 1]
+Input [14]: [Departamento#264, Provincia#265, Distrito#266, Ano#267, Semana_Epidemiologica#268, Codigo_Departamento#269, Codigo_Ubigeo#270, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+Condition : (((((atleastnnonnulls(1, trim(Departamento#264, None), trim(Provincia#265, None), trim(Distrito#266, None), Ano#267, Semana_Epidemiologica#268, Codigo_Departamento#269, lpad(regexp_replace(cast(Codigo_Ubigeo#270 as string), \.0$, , 1), 6, 0), IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277) AND (upper(trim(trim(Departamento#264, None), None)) = LA LIBERTAD)) AND (Ano#267 >= 2015)) AND (Ano#267 <= 2024)) AND (Semana_Epidemiologica#268 >= 1)) AND (Semana_Epidemiologica#268 <= 53))
+
+(5) Project [codegen id : 1]
+Output [14]: [trim(Departamento#264, None) AS Departamento#292, trim(Provincia#265, None) AS Provincia#308, trim(Distrito#266, None) AS Distrito#323, Ano#267, Semana_Epidemiologica#268, Codigo_Departamento#269, lpad(regexp_replace(cast(Codigo_Ubigeo#270 as string), \.0$, , 1), 6, 0) AS Codigo_Ubigeo#353, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+Input [14]: [Departamento#264, Provincia#265, Distrito#266, Ano#267, Semana_Epidemiologica#268, Codigo_Departamento#269, Codigo_Ubigeo#270, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+
+(6) HashAggregate
+Input [14]: [Departamento#292, Provincia#308, Distrito#323, Ano#368, Semana_Epidemiologica#383, Codigo_Departamento#269, Codigo_Ubigeo#353, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+Keys [14]: [Codigo_Ubigeo#353, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, IRA_2_a_11_meses#272, Codigo_Departamento#269, Provincia#308, Distrito#323, Neumonia_1_a_4_anos#276, IRA_1_a_4_anos#273, Semana_Epidemiologica#383, Defunciones#277, IRA_menores_2_meses#271, Departamento#292, Ano#368]
+Functions: []
+Aggregate Attributes: []
+Results [14]: [Codigo_Ubigeo#353, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, IRA_2_a_11_meses#272, Codigo_Departamento#269, Provincia#308, Distrito#323, Neumonia_1_a_4_anos#276, IRA_1_a_4_anos#273, Semana_Epidemiologica#383, Defunciones#277, IRA_menores_2_meses#271, Departamento#292, Ano#368]
+
+(7) Exchange
+Input [14]: [Codigo_Ubigeo#353, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, IRA_2_a_11_meses#272, Codigo_Departamento#269, Provincia#308, Distrito#323, Neumonia_1_a_4_anos#276, IRA_1_a_4_anos#273, Semana_Epidemiologica#383, Defunciones#277, IRA_menores_2_meses#271, Departamento#292, Ano#368]
+Arguments: hashpartitioning(Codigo_Ubigeo#353, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, IRA_2_a_11_meses#272, Codigo_Departamento#269, Provincia#308, Distrito#323, Neumonia_1_a_4_anos#276, IRA_1_a_4_anos#273, Semana_Epidemiologica#383, Defunciones#277, IRA_menores_2_meses#271, Departamento#292, Ano#368, 4), ENSURE_REQUIREMENTS, [plan_id=657]
+
+(8) HashAggregate
+Input [14]: [Codigo_Ubigeo#353, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, IRA_2_a_11_meses#272, Codigo_Departamento#269, Provincia#308, Distrito#323, Neumonia_1_a_4_anos#276, IRA_1_a_4_anos#273, Semana_Epidemiologica#383, Defunciones#277, IRA_menores_2_meses#271, Departamento#292, Ano#368]
+Keys [14]: [Codigo_Ubigeo#353, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, IRA_2_a_11_meses#272, Codigo_Departamento#269, Provincia#308, Distrito#323, Neumonia_1_a_4_anos#276, IRA_1_a_4_anos#273, Semana_Epidemiologica#383, Defunciones#277, IRA_menores_2_meses#271, Departamento#292, Ano#368]
+Functions: []
+Aggregate Attributes: []
+Results [14]: [Departamento#292, Provincia#308, Distrito#323, Ano#368, Semana_Epidemiologica#383, Codigo_Departamento#269, Codigo_Ubigeo#353, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+
+(9) AdaptiveSparkPlan
+Output [14]: [Departamento#292, Provincia#308, Distrito#323, Ano#368, Semana_Epidemiologica#383, Codigo_Departamento#269, Codigo_Ubigeo#353, IRA_menores_2_meses#271, IRA_2_a_11_meses#272, IRA_1_a_4_anos#273, Neumonia_menores_2_meses#274, Neumonia_2_a_11_meses#275, Neumonia_1_a_4_anos#276, Defunciones#277]
+Arguments: isFinalPlan=false
+
+
