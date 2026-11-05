@@ -1,7 +1,0 @@
-repeticion,modo,tiempo_segundos
-1,sin_cache,1.99
-1,con_cache,1.69
-2,sin_cache,1.75
-2,con_cache,1.81
-3,sin_cache,1.78
-3,con_cache,1.57

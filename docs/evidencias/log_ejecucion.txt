@@ -1,17 +1,56 @@
-[2026-11-05 16:16:37] Inicio de benchmark 3.6 / 3.7
-[2026-11-05 16:16:37] ===== 3.6 OPTIMIZACION DEL RENDIMIENTO =====
-[2026-11-05 16:16:57] 3.6 rep=1 modo=sin_cache tiempo=1.99s filas_final=38085
-[2026-11-05 16:17:01] 3.6 rep=1 modo=con_cache tiempo=1.69s filas_final=38085
-[2026-11-05 16:17:05] 3.6 rep=2 modo=sin_cache tiempo=1.75s filas_final=38085
-[2026-11-05 16:17:09] 3.6 rep=2 modo=con_cache tiempo=1.81s filas_final=38085
-[2026-11-05 16:17:13] 3.6 rep=3 modo=sin_cache tiempo=1.78s filas_final=38085
-[2026-11-05 16:17:17] 3.6 rep=3 modo=con_cache tiempo=1.57s filas_final=38085
-[2026-11-05 16:17:18] ===== 3.7 PRUEBA DE ESCALABILIDAD =====
-[2026-11-05 16:17:18] Replica x1 generada: 38086 filas, 2.3 MB
-[2026-11-05 16:17:21] x1: tiempo=1.62s filas_final=38085 cpu_prom=2.6% cpu_max=5.8% mem_prom=606.2MB mem_pico=731.9MB
-[2026-11-05 16:17:23] Replica x10 generada: 380860 filas, 23.1 MB
-[2026-11-05 16:17:28] x10: tiempo=3.70s filas_final=38085 cpu_prom=2.1% cpu_max=3.9% mem_prom=711.9MB mem_pico=803.5MB
-[2026-11-05 16:17:31] Replica x100 generada: 3808600 filas, 231.0 MB
-[2026-11-05 16:17:50] x100: tiempo=17.57s filas_final=38085 cpu_prom=1.6% cpu_max=4.0% mem_prom=1006.7MB mem_pico=1038.5MB
-[2026-11-05 16:17:52] Resumen escrito en /home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/docs/evidencias/resumen_3_6_3_7.md
-[2026-11-05 16:17:52] Benchmark finalizado.
+[2026-11-05 16:36:37] Inicio de benchmark 3.6 / 3.7 (IRA, Malaria, SENAMHI)
+[2026-11-05 16:36:37] ===== 3.6 OPTIMIZACION DEL RENDIMIENTO (IRA) =====
+[2026-11-05 16:36:58] 3.6 [IRA] rep=1 modo=sin_cache tiempo=2.12s filas_final=38085
+[2026-11-05 16:37:02] 3.6 [IRA] rep=1 modo=con_cache tiempo=1.79s filas_final=38085
+[2026-11-05 16:37:06] 3.6 [IRA] rep=2 modo=sin_cache tiempo=1.80s filas_final=38085
+[2026-11-05 16:37:10] 3.6 [IRA] rep=2 modo=con_cache tiempo=1.63s filas_final=38085
+[2026-11-05 16:37:14] 3.6 [IRA] rep=3 modo=sin_cache tiempo=1.58s filas_final=38085
+[2026-11-05 16:37:18] 3.6 [IRA] rep=3 modo=con_cache tiempo=1.56s filas_final=38085
+[2026-11-05 16:37:19] ===== 3.7 PRUEBA DE ESCALABILIDAD (IRA) =====
+[2026-11-05 16:37:19] [IRA] Replica x1 generada: 38086 filas, 2.3 MB
+[2026-11-05 16:37:22] [IRA] x1: tiempo=1.56s filas_final=38085 cpu_prom=2.6% cpu_max=5.8% mem_prom=711.7MB mem_pico=860.7MB
+[2026-11-05 16:37:25] [IRA] Replica x10 generada: 380860 filas, 23.1 MB
+[2026-11-05 16:37:29] [IRA] x10: tiempo=3.42s filas_final=38085 cpu_prom=1.7% cpu_max=3.9% mem_prom=818.7MB mem_pico=943.5MB
+[2026-11-05 16:37:32] [IRA] Replica x100 generada: 3808600 filas, 231.0 MB
+[2026-11-05 16:37:51] [IRA] x100: tiempo=17.86s filas_final=38085 cpu_prom=1.6% cpu_max=5.8% mem_prom=917.7MB mem_pico=953.7MB
+[2026-11-05 16:37:53] ===== 3.6 OPTIMIZACION DEL RENDIMIENTO (MALARIA) =====
+[2026-11-05 16:38:01] 3.6 [MALARIA] rep=1 modo=sin_cache tiempo=0.98s filas_final=490
+[2026-11-05 16:38:04] 3.6 [MALARIA] rep=1 modo=con_cache tiempo=1.04s filas_final=490
+[2026-11-05 16:38:07] 3.6 [MALARIA] rep=2 modo=sin_cache tiempo=0.96s filas_final=490
+[2026-11-05 16:38:11] 3.6 [MALARIA] rep=2 modo=con_cache tiempo=0.98s filas_final=490
+[2026-11-05 16:38:14] 3.6 [MALARIA] rep=3 modo=sin_cache tiempo=0.98s filas_final=490
+[2026-11-05 16:38:18] 3.6 [MALARIA] rep=3 modo=con_cache tiempo=0.98s filas_final=490
+[2026-11-05 16:38:19] ===== 3.7 PRUEBA DE ESCALABILIDAD (MALARIA) =====
+[2026-11-05 16:38:19] [MALARIA] Replica x1 generada: 490 filas, 0.1 MB
+[2026-11-05 16:38:21] [MALARIA] x1: tiempo=0.93s filas_final=490 cpu_prom=3.1% cpu_max=7.8% mem_prom=886.5MB mem_pico=1108.3MB
+[2026-11-05 16:38:23] [MALARIA] Replica x10 generada: 4900 filas, 0.5 MB
+[2026-11-05 16:38:26] [MALARIA] x10: tiempo=1.05s filas_final=490 cpu_prom=2.6% cpu_max=7.9% mem_prom=925.2MB mem_pico=1113.6MB
+[2026-11-05 16:38:29] [MALARIA] Replica x100 generada: 49000 filas, 5.2 MB
+[2026-11-05 16:38:32] [MALARIA] x100: tiempo=1.56s filas_final=490 cpu_prom=2.3% cpu_max=5.9% mem_prom=960.4MB mem_pico=1124.2MB
+[2026-11-05 16:38:34] ===== 3.6 OPTIMIZACION DEL RENDIMIENTO (SENAMHI) =====
+[2026-11-05 16:38:35]   control de rango: 36530 -> 36530
+[2026-11-05 16:38:39]   control de rango: 36530 -> 36530
+[2026-11-05 16:38:42]   control de rango: 36530 -> 36530
+[2026-11-05 16:38:44] 3.6 [SENAMHI] rep=1 modo=sin_cache tiempo=1.83s filas_final=36530
+[2026-11-05 16:38:46]   control de rango: 36530 -> 36530
+[2026-11-05 16:38:48] 3.6 [SENAMHI] rep=1 modo=con_cache tiempo=1.50s filas_final=36530
+[2026-11-05 16:38:50]   control de rango: 36530 -> 36530
+[2026-11-05 16:38:52] 3.6 [SENAMHI] rep=2 modo=sin_cache tiempo=1.89s filas_final=36530
+[2026-11-05 16:38:54]   control de rango: 36530 -> 36530
+[2026-11-05 16:38:55] 3.6 [SENAMHI] rep=2 modo=con_cache tiempo=1.35s filas_final=36530
+[2026-11-05 16:38:57]   control de rango: 36530 -> 36530
+[2026-11-05 16:39:00] 3.6 [SENAMHI] rep=3 modo=sin_cache tiempo=1.75s filas_final=36530
+[2026-11-05 16:39:01]   control de rango: 36530 -> 36530
+[2026-11-05 16:39:03] 3.6 [SENAMHI] rep=3 modo=con_cache tiempo=1.32s filas_final=36530
+[2026-11-05 16:39:04] ===== 3.7 PRUEBA DE ESCALABILIDAD (SENAMHI) =====
+[2026-11-05 16:39:04] [SENAMHI] Replica x1 generada: 36530 filas, 2.3 MB
+[2026-11-05 16:39:05]   control de rango: 36530 -> 36530
+[2026-11-05 16:39:07] [SENAMHI] x1: tiempo=1.44s filas_final=36530 cpu_prom=2.7% cpu_max=3.9% mem_prom=926.0MB mem_pico=1159.3MB
+[2026-11-05 16:39:09] [SENAMHI] Replica x10 generada: 365300 filas, 23.0 MB
+[2026-11-05 16:39:11]   control de rango: 365300 -> 365300
+[2026-11-05 16:39:14] [SENAMHI] x10: tiempo=3.84s filas_final=36530 cpu_prom=2.6% cpu_max=5.9% mem_prom=1043.5MB mem_pico=1162.2MB
+[2026-11-05 16:39:16] [SENAMHI] Replica x100 generada: 3653000 filas, 230.4 MB
+[2026-11-05 16:39:32]   control de rango: 3653000 -> 3653000
+[2026-11-05 16:39:36] [SENAMHI] x100: tiempo=17.87s filas_final=36530 cpu_prom=1.6% cpu_max=3.9% mem_prom=1155.3MB mem_pico=1253.5MB
+[2026-11-05 16:39:38] Resumen escrito en /home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/docs/evidencias/resumen_3_6_3_7.md
+[2026-11-05 16:39:38] Benchmark finalizado.

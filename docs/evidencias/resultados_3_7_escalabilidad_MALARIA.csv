@@ -1,0 +1,4 @@
+factor,filas_entrada,filas_final,tiempo_segundos,cpu_prom_pct,cpu_max_pct,mem_prom_mb,mem_pico_mb
+1,490,490,0.93,3.1,7.8,886.5,1108.3
+10,4900,490,1.05,2.6,7.9,925.2,1113.6
+100,49000,490,1.56,2.3,5.9,960.4,1124.2
