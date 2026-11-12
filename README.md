@@ -223,9 +223,9 @@ El proyecto se encuentra en etapa de desarrollo.
 * [x] Selección del dataset meteorológico SENAMHI.
 * [x] Definición del periodo común de análisis.
 * [x] Definición de la clave de integración.
-* [ ] Organización de datasets en el repositorio.
-* [ ] Preprocesamiento de datos.
-* [ ] Integración de datasets.
+* [x] Organización de datasets en el repositorio.
+* [x] Preprocesamiento de datos.
+* [x] Integración de datasets.
 * [ ] Implementación del procesamiento Big Data.
 * [ ] Construcción del dataset analítico.
 * [ ] Desarrollo del modelo predictivo.
@@ -237,5 +237,12 @@ El proyecto se encuentra en etapa de desarrollo.
 Proyecto académico desarrollado para el Programa de Estudio de Ingeniería de Computación y Sistemas.
 
 ---
+###INTEGRANTES
+
+Principe Huamanchumo, Luis 
+Sandoval Vargas, Robert
+Caipo Trujillo, Sonia
+Silva López, Wilmer
+
 
 *Sistema Predictivo Big Data — Vigilancia Epidemiológica en La Libertad*
