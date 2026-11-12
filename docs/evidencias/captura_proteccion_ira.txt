@@ -1,0 +1,161 @@
+26/11/12 17:02:47 WARN Utils: Your hostname, soniacaipo resolves to a loopback address: 127.0.1.1; using 192.168.100.6 instead (on interface wlp0s20f3)
+26/11/12 17:02:47 WARN Utils: Set SPARK_LOCAL_IP if you need to bind to another address
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+26/11/12 17:02:47 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+[Stage 1:>                                                          (0 + 4) / 4][Stage 1:==============>                                            (1 + 3) / 4]                                                                                [Stage 2:>                                                          (0 + 4) / 4]                                                                                [Stage 5:>                                                          (0 + 4) / 4][Stage 5:=============================>                             (2 + 2) / 4][Stage 5:============================================>              (3 + 1) / 4]                                                                                
+========== LECTURA DEL DATASET ==========
+
+========== ESQUEMA ORIGINAL ==========
+root
+ |-- Departamento: string (nullable = true)
+ |-- Provincia: string (nullable = true)
+ |-- Distrito: string (nullable = true)
+ |-- Año: integer (nullable = true)
+ |-- Semana_Epidemiologica: integer (nullable = true)
+ |-- Codigo_Departamento: integer (nullable = true)
+ |-- Codigo_Ubigeo: integer (nullable = true)
+ |-- IRA_menores_2_meses: integer (nullable = true)
+ |-- IRA_2_a_11_meses: integer (nullable = true)
+ |-- IRA_1_a_4_anos: integer (nullable = true)
+ |-- Neumonia_menores_2_meses: integer (nullable = true)
+ |-- Neumonia_2_a_11_meses: integer (nullable = true)
+ |-- Neumonia_1_a_4_anos: integer (nullable = true)
+ |-- Defunciones: integer (nullable = true)
+
+
+========== COLUMNAS ORIGINALES ==========
+['Departamento', 'Provincia', 'Distrito', 'Año', 'Semana_Epidemiologica', 'Codigo_Departamento', 'Codigo_Ubigeo', 'IRA_menores_2_meses', 'IRA_2_a_11_meses', 'IRA_1_a_4_anos', 'Neumonia_menores_2_meses', 'Neumonia_2_a_11_meses', 'Neumonia_1_a_4_anos', 'Defunciones']
+
+========== COLUMNAS NORMALIZADAS ==========
+['Departamento', 'Provincia', 'Distrito', 'Ano', 'Semana_Epidemiologica', 'Codigo_Departamento', 'Codigo_Ubigeo', 'IRA_menores_2_meses', 'IRA_2_a_11_meses', 'IRA_1_a_4_anos', 'Neumonia_menores_2_meses', 'Neumonia_2_a_11_meses', 'Neumonia_1_a_4_anos', 'Defunciones']
+
+========== FILTRANDO LA LIBERTAD ==========
+Registros después de filtrar LA LIBERTAD: 102525
+
+========== FILTRANDO PERÍODO ==========
+
+========== CONTROL DEL PERÍODO ==========
+Total de registros: 38085
+Año mínimo: 2015
+Año máximo: 2024
+
+Distribución por año:
++----+-----+
+| Ano|count|
++----+-----+
+|2015| 4152|
+|2016| 4155|
+|2017| 4129|
+|2018| 4202|
+|2019| 4228|
+|2020| 3171|
+|2021| 3711|
+|2022| 4031|
+|2023| 4191|
+|2024| 2115|
++----+-----+
+
+
+Departamentos encontrados:
++------------+
+|Departamento|
++------------+
+| LA LIBERTAD|
++------------+
+
+
+========== CONTROL 2024 ==========
++-------------+-------------+
+|semana_minima|semana_maxima|
++-------------+-------------+
+|            1|           26|
++-------------+-------------+
+
+
+========== DUPLICADOS ==========
+Antes: 38085
+Después: 38085
+Eliminados: 0
+
+========== EVIDENCIA: ANTES Y DESPUES DE LA PROTECCION ==========
++------------+---------------------+-------------------+-------------------------+-----------+-----------------+
+|Distrito    |Semana_Epidemiologica|IRA_menores_2_meses|IRA_menores_2_meses_rango|Defunciones|Defunciones_rango|
++------------+---------------------+-------------------+-------------------------+-----------+-----------------+
+|LA CUESTA   |1                    |1                  |1-4                      |0          |0                |
+|URPAY       |1                    |2                  |1-4                      |0          |0                |
+|COCHORCO    |1                    |13                 |10-19                    |0          |0                |
+|CHAO        |1                    |35                 |20+                      |0          |0                |
+|CHICAMA     |2                    |14                 |10-19                    |0          |0                |
+|BOLIVAR     |2                    |1                  |1-4                      |0          |0                |
+|PUEBLO NUEVO|2                    |20                 |20+                      |0          |0                |
+|MARMOT      |2                    |2                  |1-4                      |0          |0                |
+|SAYAPULLO   |2                    |8                  |5-9                      |0          |0                |
+|CHARAT      |2                    |4                  |1-4                      |0          |0                |
++------------+---------------------+-------------------+-------------------------+-----------+-----------------+
+only showing top 10 rows
+
+
+========== ESQUEMA FINAL ==========
+root
+ |-- Departamento: string (nullable = true)
+ |-- Provincia: string (nullable = true)
+ |-- Distrito: string (nullable = true)
+ |-- Ano: integer (nullable = true)
+ |-- Semana_Epidemiologica: integer (nullable = true)
+ |-- Codigo_Departamento: integer (nullable = true)
+ |-- Codigo_Ubigeo: string (nullable = true)
+ |-- IRA_menores_2_meses: integer (nullable = true)
+ |-- IRA_menores_2_meses_rango: string (nullable = false)
+ |-- IRA_2_a_11_meses: integer (nullable = true)
+ |-- IRA_2_a_11_meses_rango: string (nullable = false)
+ |-- IRA_1_a_4_anos: integer (nullable = true)
+ |-- IRA_1_a_4_anos_rango: string (nullable = false)
+ |-- Neumonia_menores_2_meses: integer (nullable = true)
+ |-- Neumonia_menores_2_meses_rango: string (nullable = false)
+ |-- Neumonia_2_a_11_meses: integer (nullable = true)
+ |-- Neumonia_2_a_11_meses_rango: string (nullable = false)
+ |-- Neumonia_1_a_4_anos: integer (nullable = true)
+ |-- Neumonia_1_a_4_anos_rango: string (nullable = false)
+ |-- Defunciones: integer (nullable = true)
+ |-- Defunciones_rango: string (nullable = false)
+
+
+========== DATOS FINALES ==========
++------------+---------------+------------+----+---------------------+-------------------+-------------+-------------------+-------------------------+----------------+----------------------+--------------+--------------------+------------------------+------------------------------+---------------------+---------------------------+-------------------+-------------------------+-----------+-----------------+
+|Departamento|Provincia      |Distrito    |Ano |Semana_Epidemiologica|Codigo_Departamento|Codigo_Ubigeo|IRA_menores_2_meses|IRA_menores_2_meses_rango|IRA_2_a_11_meses|IRA_2_a_11_meses_rango|IRA_1_a_4_anos|IRA_1_a_4_anos_rango|Neumonia_menores_2_meses|Neumonia_menores_2_meses_rango|Neumonia_2_a_11_meses|Neumonia_2_a_11_meses_rango|Neumonia_1_a_4_anos|Neumonia_1_a_4_anos_rango|Defunciones|Defunciones_rango|
++------------+---------------+------------+----+---------------------+-------------------+-------------+-------------------+-------------------------+----------------+----------------------+--------------+--------------------+------------------------+------------------------------+---------------------+---------------------------+-------------------+-------------------------+-----------+-----------------+
+|LA LIBERTAD |OTUZCO         |LA CUESTA   |2015|1                    |13                 |130606       |1                  |1-4                      |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |PATAZ          |URPAY       |2015|1                    |13                 |130813       |2                  |1-4                      |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |SANCHEZ CARRION|COCHORCO    |2015|1                    |13                 |130903       |13                 |10-19                    |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |VIRU           |CHAO        |2015|1                    |13                 |131202       |35                 |20+                      |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |ASCOPE         |CHICAMA     |2015|2                    |13                 |130202       |14                 |10-19                    |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |BOLIVAR        |BOLIVAR     |2015|2                    |13                 |130301       |1                  |1-4                      |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |CHEPEN         |PUEBLO NUEVO|2015|2                    |13                 |130403       |20                 |20+                      |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |GRAN CHIMU     |MARMOT      |2015|2                    |13                 |131103       |2                  |1-4                      |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |GRAN CHIMU     |SAYAPULLO   |2015|2                    |13                 |131104       |8                  |5-9                      |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
+|LA LIBERTAD |OTUZCO         |CHARAT      |2015|2                    |13                 |130604       |4                  |1-4                      |0               |0                     |0             |0                   |0                       |0                             |0                    |0                          |0                  |0                        |0          |0                |
++------------+---------------+------------+----+---------------------+-------------------+-------------+-------------------+-------------------------+----------------+----------------------+--------------+--------------------+------------------------+------------------------------+---------------------+---------------------------+-------------------+-------------------------+-----------+-----------------+
+only showing top 10 rows
+[Stage 53:>                                                         (0 + 1) / 1]                                                                                
+
+========== TOTAL FINAL ==========
+38085
+
+========== GUARDANDO CSV ==========
+CSV guardado correctamente.
+
+========== GUARDANDO PARQUET ==========
+Parquet guardado correctamente.
+
+==========================================
+       LIMPIEZA IRA FINALIZADA
+==========================================
+CSV:
+hdfs://localhost:9000/datalake/processed/ira/csv
+
+Parquet:
+hdfs://localhost:9000/datalake/processed/ira/parquet
+
+Registros finales:
+38085

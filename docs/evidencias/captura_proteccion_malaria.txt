@@ -1,0 +1,172 @@
+26/11/12 17:02:19 WARN Utils: Your hostname, soniacaipo resolves to a loopback address: 127.0.1.1; using 192.168.100.6 instead (on interface wlp0s20f3)
+26/11/12 17:02:19 WARN Utils: Set SPARK_LOCAL_IP if you need to bind to another address
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+26/11/12 17:02:20 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+[Stage 1:>                                                          (0 + 4) / 4]                                                                                [Stage 5:============================================>              (3 + 1) / 4]                                                                                [Stage 68:>                                                         (0 + 1) / 1]                                                                                [Stage 71:>                                                         (0 + 1) / 1]                                                                                
+========== LECTURA DEL DATASET ==========
+
+========== ESQUEMA ORIGINAL ==========
+root
+ |-- departamento: string (nullable = true)
+ |-- provincia: string (nullable = true)
+ |-- distrito: string (nullable = true)
+ |-- localidad: string (nullable = true)
+ |-- enfermedad: string (nullable = true)
+ |-- ano: integer (nullable = true)
+ |-- semana: integer (nullable = true)
+ |-- diagnostic: string (nullable = true)
+ |-- diresa: integer (nullable = true)
+ |-- ubigeo: integer (nullable = true)
+ |-- localcod: string (nullable = true)
+ |-- edad: integer (nullable = true)
+ |-- tipo_edad: string (nullable = true)
+ |-- sexo: string (nullable = true)
+ |-- Malaria_total: double (nullable = true)
+ |-- B50: double (nullable = true)
+ |-- B51: double (nullable = true)
+
+
+========== COLUMNAS ORIGINALES ==========
+['departamento', 'provincia', 'distrito', 'localidad', 'enfermedad', 'ano', 'semana', 'diagnostic', 'diresa', 'ubigeo', 'localcod', 'edad', 'tipo_edad', 'sexo', 'Malaria_total', 'B50', 'B51']
+
+========== COLUMNAS NORMALIZADAS ==========
+['departamento', 'provincia', 'distrito', 'localidad', 'enfermedad', 'ano', 'semana', 'diagnostic', 'diresa', 'ubigeo', 'localcod', 'edad', 'tipo_edad', 'sexo', 'Malaria_total', 'B50', 'B51']
+
+========== FILTRANDO LA LIBERTAD ==========
+Registros después de filtrar LA LIBERTAD: 1386
+
+========== FILTRANDO PERÍODO ==========
+
+========== CONTROL DEL PERÍODO ==========
+Total de registros: 493
+Año mínimo: 2015
+Año máximo: 2022
+
+Distribución por año:
++----+-----+
+| ano|count|
++----+-----+
+|2015|   49|
+|2016|  131|
+|2017|   92|
+|2018|  119|
+|2019|   89|
+|2020|    6|
+|2021|    5|
+|2022|    2|
++----+-----+
+
+
+Provincias encontradas:
++-----------------+
+|provincia        |
++-----------------+
+|BOLIVAR          |
+|PATAZ            |
+|SANCHEZ CARRION  |
+|SANTIAGO DE CHUCO|
+|TRUJILLO         |
+|VIRU             |
++-----------------+
+
+
+Cantidad de provincias:
+6
+
+Cantidad de distritos:
+16
+
+Cantidad de localidades:
+70
+
+========== CONTROL 2024 ==========
++-------------+-------------+
+|semana_minima|semana_maxima|
++-------------+-------------+
+|         NULL|         NULL|
++-------------+-------------+
+
+
+========== ELIMINANDO DUPLICADOS ==========
+Registros antes: 493
+Registros después: 490
+Duplicados eliminados: 3
+
+========== EVIDENCIA: ANTES Y DESPUES DE LA PROTECCION ==========
++-------------+--------------+----+----------+
+|localidad    |localidad_hash|edad|edad_rango|
++-------------+--------------+----+----------+
+|NIMPANA      |a38960a0f98b  |3   |0-4       |
+|TALPO        |fe982fdabb20  |37  |15-44     |
+|LLAUPUY      |daffeba9d4ce  |16  |15-44     |
+|CALEMAR      |144af5fb4e9e  |18  |15-44     |
+|SAN FELIPE II|9b7dd38491dd  |46  |45-64     |
+|LA LIMA      |c9c066588318  |34  |15-44     |
+|LA LIMA      |c9c066588318  |16  |15-44     |
+|LLANCO       |9ed2341e11b9  |15  |15-44     |
+|SAN FELIPE II|9b7dd38491dd  |38  |15-44     |
+|SAN FELIPE II|9b7dd38491dd  |6   |5-14      |
++-------------+--------------+----+----------+
+only showing top 10 rows
+
+
+========== ESQUEMA FINAL ==========
+root
+ |-- departamento: string (nullable = true)
+ |-- provincia: string (nullable = true)
+ |-- distrito: string (nullable = true)
+ |-- localidad_hash: string (nullable = true)
+ |-- enfermedad: string (nullable = true)
+ |-- ano: integer (nullable = true)
+ |-- semana: integer (nullable = true)
+ |-- diagnostic: string (nullable = true)
+ |-- diresa: string (nullable = true)
+ |-- ubigeo: string (nullable = true)
+ |-- localcod: string (nullable = true)
+ |-- edad_rango: string (nullable = false)
+ |-- tipo_edad: string (nullable = true)
+ |-- sexo: string (nullable = true)
+ |-- Malaria_total: integer (nullable = true)
+ |-- B50: integer (nullable = true)
+ |-- B51: integer (nullable = true)
+
+
+========== DATOS FINALES ==========
++------------+---------------+-----------+--------------+--------------------+----+------+----------+------+------+----------+----------+---------+----+-------------+---+---+
+|departamento|provincia      |distrito   |localidad_hash|enfermedad          |ano |semana|diagnostic|diresa|ubigeo|localcod  |edad_rango|tipo_edad|sexo|Malaria_total|B50|B51|
++------------+---------------+-----------+--------------+--------------------+----+------+----------+------+------+----------+----------+---------+----+-------------+---+---+
+|LA LIBERTAD |PATAZ          |PATAZ      |a38960a0f98b  |MALARIA POR P. VIVAX|2015|12    |B51       |13    |130809|1308090002|0-4       |A        |M   |1            |0  |1  |
+|LA LIBERTAD |SANCHEZ CARRION|SARTIMBAMBA|fe982fdabb20  |MALARIA POR P. VIVAX|2015|41    |B51       |13    |130908|1309080073|15-44     |A        |M   |1            |0  |1  |
+|LA LIBERTAD |SANCHEZ CARRION|SARTIMBAMBA|daffeba9d4ce  |MALARIA POR P. VIVAX|2015|16    |B51       |13    |130908|1309080025|15-44     |A        |M   |1            |0  |1  |
+|LA LIBERTAD |BOLIVAR        |BAMBAMARCA |144af5fb4e9e  |MALARIA POR P. VIVAX|2015|29    |B51       |13    |130302|1303020027|15-44     |A        |F   |3            |0  |3  |
+|LA LIBERTAD |SANCHEZ CARRION|SARTIMBAMBA|9b7dd38491dd  |MALARIA POR P. VIVAX|2016|41    |B51       |13    |130908|1309080092|45-64     |A        |M   |4            |0  |4  |
+|LA LIBERTAD |PATAZ          |PATAZ      |c9c066588318  |MALARIA POR P. VIVAX|2016|34    |B51       |13    |130809|1308090016|15-44     |A        |M   |1            |0  |1  |
+|LA LIBERTAD |PATAZ          |PATAZ      |c9c066588318  |MALARIA POR P. VIVAX|2016|43    |B51       |13    |130809|1308090016|15-44     |A        |F   |2            |0  |2  |
+|LA LIBERTAD |SANCHEZ CARRION|SARTIMBAMBA|9ed2341e11b9  |MALARIA POR P. VIVAX|2016|7     |B51       |13    |130908|1309080053|15-44     |A        |M   |1            |0  |1  |
+|LA LIBERTAD |SANCHEZ CARRION|SARTIMBAMBA|9b7dd38491dd  |MALARIA POR P. VIVAX|2016|6     |B51       |13    |130908|1309080092|15-44     |A        |F   |4            |0  |4  |
+|LA LIBERTAD |SANCHEZ CARRION|SARTIMBAMBA|9b7dd38491dd  |MALARIA POR P. VIVAX|2016|5     |B51       |13    |130908|1309080092|5-14      |A        |M   |8            |0  |8  |
++------------+---------------+-----------+--------------+--------------------+----+------+----------+------+------+----------+----------+---------+----+-------------+---+---+
+only showing top 10 rows
+
+
+========== TOTAL FINAL ==========
+490
+
+========== GUARDANDO CSV ==========
+CSV guardado correctamente.
+
+========== GUARDANDO PARQUET ==========
+Parquet guardado correctamente.
+
+==========================================
+      LIMPIEZA MALARIA FINALIZADA
+==========================================
+CSV:
+hdfs://localhost:9000/datalake/processed/malaria/csv
+
+Parquet:
+hdfs://localhost:9000/datalake/processed/malaria/parquet
+
+Registros finales:
+490

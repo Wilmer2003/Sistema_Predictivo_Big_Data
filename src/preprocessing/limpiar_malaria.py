@@ -432,6 +432,19 @@ if "localidad" in df.columns:
         )
     )
 
+print("\n========== EVIDENCIA: ANTES Y DESPUES DE LA PROTECCION ==========")
+
+(
+    df
+    .select(
+        "localidad",
+        "localidad_hash",
+        "edad",
+        "edad_rango"
+    )
+    .show(10, truncate=False)
+)
+
 # ============================================================
 # 17. COLUMNAS FINALES
 # ============================================================

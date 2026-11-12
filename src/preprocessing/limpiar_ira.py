@@ -355,6 +355,21 @@ for columna in columnas_conteo:
             .otherwise("SIN_DATO")
         )
 
+print("\n========== EVIDENCIA: ANTES Y DESPUES DE LA PROTECCION ==========")
+
+(
+    df
+    .select(
+        "Distrito",
+        "Semana_Epidemiologica",
+        "IRA_menores_2_meses",
+        "IRA_menores_2_meses_rango",
+        "Defunciones",
+        "Defunciones_rango"
+    )
+    .show(10, truncate=False)
+)
+
 # ============================================================
 # 17. RECONSTRUIR DATAFRAME FINAL
 # ============================================================
