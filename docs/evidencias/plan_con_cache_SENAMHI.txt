@@ -1,0 +1,75 @@
+== Physical Plan ==
+AdaptiveSparkPlan (12)
++- SortAggregate (11)
+   +- Sort (10)
+      +- Exchange (9)
+         +- SortAggregate (8)
+            +- Sort (7)
+               +- Filter (6)
+                  +- InMemoryTableScan (1)
+                        +- InMemoryRelation (2)
+                              +- * Project (5)
+                                 +- * Filter (4)
+                                    +- Scan csv  (3)
+
+
+(1) InMemoryTableScan
+Output [11]: [Departamento#31787, Estacion#31766, Ano#31800, Mes#31812, Dia#31824, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31836, Temperatura_maxima#31848, Temperatura_minima#31860, tc#31872]
+Arguments: [Departamento#31787, Estacion#31766, Ano#31800, Mes#31812, Dia#31824, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31836, Temperatura_maxima#31848, Temperatura_minima#31860, tc#31872], [(Precipitacion_acumulada#31836 >= 0.0), (Temperatura_minima#31860 <= Temperatura_maxima#31848)]
+
+(2) InMemoryRelation
+Arguments: [Departamento#31787, Estacion#31766, Ano#31800, Mes#31812, Dia#31824, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31836, Temperatura_maxima#31848, Temperatura_minima#31860, tc#31872], CachedRDDBuilder(org.apache.spark.sql.execution.columnar.DefaultCachedBatchSerializer@7694ea15,StorageLevel(disk, memory, deserialized, 1 replicas),*(1) Project [trim(Departamento#31765, None) AS Departamento#31787, Estacion#31766, Ano#31767, Mes#31768, Dia#31769, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31772, Temperatura_maxima#31773, Temperatura_minima#31774, tc#31775]
++- *(1) Filter (((atleastnnonnulls(1, trim(Departamento#31765, None), Estacion#31766, Ano#31767, Mes#31768, Dia#31769, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31772, Temperatura_maxima#31773, Temperatura_minima#31774, tc#31775) AND (upper(trim(trim(Departamento#31765, None), None)) = LA LIBERTAD)) AND (Ano#31767 >= 2015)) AND (Ano#31767 <= 2024))
+   +- FileScan csv [Departamento#31765,Estacion#31766,Ano#31767,Mes#31768,Dia#31769,Fecha#31770,Semana_Epidemiologica#31771,Precipitacion_acumulada#31772,Temperatura_maxima#31773,Temperatura_minima#31774,tc#31775] Batched: false, DataFilters: [atleastnnonnulls(1, trim(Departamento#31765, None), Estacion#31766, Ano#31767, Mes#31768, Dia#31..., Format: CSV, Location: InMemoryFileIndex(1 paths)[file:/home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/Clima_La_L..., PartitionFilters: [], PushedFilters: [GreaterThanOrEqual(Ano,2015), LessThanOrEqual(Ano,2024)], ReadSchema: struct<Departamento:string,Estacion:string,Ano:int,Mes:int,Dia:int,Fecha:date,Semana_Epidemiologi...
+,None)
+
+(3) Scan csv 
+Output [11]: [Departamento#31765, Estacion#31766, Ano#31767, Mes#31768, Dia#31769, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31772, Temperatura_maxima#31773, Temperatura_minima#31774, tc#31775]
+Batched: false
+Location: InMemoryFileIndex [file:/home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/Clima_La_Libertad_2015_2024.csv]
+PushedFilters: [GreaterThanOrEqual(Ano,2015), LessThanOrEqual(Ano,2024)]
+ReadSchema: struct<Departamento:string,Estacion:string,Ano:int,Mes:int,Dia:int,Fecha:date,Semana_Epidemiologica:int,Precipitacion_acumulada:double,Temperatura_maxima:double,Temperatura_minima:double,tc:double>
+
+(4) Filter [codegen id : 1]
+Input [11]: [Departamento#31765, Estacion#31766, Ano#31767, Mes#31768, Dia#31769, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31772, Temperatura_maxima#31773, Temperatura_minima#31774, tc#31775]
+Condition : (((atleastnnonnulls(1, trim(Departamento#31765, None), Estacion#31766, Ano#31767, Mes#31768, Dia#31769, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31772, Temperatura_maxima#31773, Temperatura_minima#31774, tc#31775) AND (upper(trim(trim(Departamento#31765, None), None)) = LA LIBERTAD)) AND (Ano#31767 >= 2015)) AND (Ano#31767 <= 2024))
+
+(5) Project [codegen id : 1]
+Output [11]: [trim(Departamento#31765, None) AS Departamento#31787, Estacion#31766, Ano#31767, Mes#31768, Dia#31769, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31772, Temperatura_maxima#31773, Temperatura_minima#31774, tc#31775]
+Input [11]: [Departamento#31765, Estacion#31766, Ano#31767, Mes#31768, Dia#31769, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31772, Temperatura_maxima#31773, Temperatura_minima#31774, tc#31775]
+
+(6) Filter
+Input [11]: [Departamento#31787, Estacion#31766, Ano#31800, Mes#31812, Dia#31824, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31836, Temperatura_maxima#31848, Temperatura_minima#31860, tc#31872]
+Condition : ((Precipitacion_acumulada#31836 >= 0.0) AND (Temperatura_minima#31860 <= Temperatura_maxima#31848))
+
+(7) Sort
+Input [11]: [Departamento#31787, Estacion#31766, Ano#31800, Mes#31812, Dia#31824, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31836, Temperatura_maxima#31848, Temperatura_minima#31860, tc#31872]
+Arguments: [Estacion#31766 ASC NULLS FIRST, Fecha#31770 ASC NULLS FIRST], false, 0
+
+(8) SortAggregate
+Input [11]: [Departamento#31787, Estacion#31766, Ano#31800, Mes#31812, Dia#31824, Fecha#31770, Semana_Epidemiologica#31771, Precipitacion_acumulada#31836, Temperatura_maxima#31848, Temperatura_minima#31860, tc#31872]
+Keys [2]: [Estacion#31766, Fecha#31770]
+Functions [9]: [partial_first(Departamento#31787, false), partial_first(Ano#31800, false), partial_first(Mes#31812, false), partial_first(Dia#31824, false), partial_first(Semana_Epidemiologica#31771, false), partial_first(Precipitacion_acumulada#31836, false), partial_first(Temperatura_maxima#31848, false), partial_first(Temperatura_minima#31860, false), partial_first(tc#31872, false)]
+Aggregate Attributes [18]: [first#33894, valueSet#33895, first#33896, valueSet#33897, first#33898, valueSet#33899, first#33900, valueSet#33901, first#33902, valueSet#33903, first#33904, valueSet#33905, first#33906, valueSet#33907, first#33908, valueSet#33909, first#33910, valueSet#33911]
+Results [20]: [Estacion#31766, Fecha#31770, first#33912, valueSet#33913, first#33914, valueSet#33915, first#33916, valueSet#33917, first#33918, valueSet#33919, first#33920, valueSet#33921, first#33922, valueSet#33923, first#33924, valueSet#33925, first#33926, valueSet#33927, first#33928, valueSet#33929]
+
+(9) Exchange
+Input [20]: [Estacion#31766, Fecha#31770, first#33912, valueSet#33913, first#33914, valueSet#33915, first#33916, valueSet#33917, first#33918, valueSet#33919, first#33920, valueSet#33921, first#33922, valueSet#33923, first#33924, valueSet#33925, first#33926, valueSet#33927, first#33928, valueSet#33929]
+Arguments: hashpartitioning(Estacion#31766, Fecha#31770, 4), ENSURE_REQUIREMENTS, [plan_id=8249]
+
+(10) Sort
+Input [20]: [Estacion#31766, Fecha#31770, first#33912, valueSet#33913, first#33914, valueSet#33915, first#33916, valueSet#33917, first#33918, valueSet#33919, first#33920, valueSet#33921, first#33922, valueSet#33923, first#33924, valueSet#33925, first#33926, valueSet#33927, first#33928, valueSet#33929]
+Arguments: [Estacion#31766 ASC NULLS FIRST, Fecha#31770 ASC NULLS FIRST], false, 0
+
+(11) SortAggregate
+Input [20]: [Estacion#31766, Fecha#31770, first#33912, valueSet#33913, first#33914, valueSet#33915, first#33916, valueSet#33917, first#33918, valueSet#33919, first#33920, valueSet#33921, first#33922, valueSet#33923, first#33924, valueSet#33925, first#33926, valueSet#33927, first#33928, valueSet#33929]
+Keys [2]: [Estacion#31766, Fecha#31770]
+Functions [9]: [first(Departamento#31787, false), first(Ano#31800, false), first(Mes#31812, false), first(Dia#31824, false), first(Semana_Epidemiologica#31771, false), first(Precipitacion_acumulada#31836, false), first(Temperatura_maxima#31848, false), first(Temperatura_minima#31860, false), first(tc#31872, false)]
+Aggregate Attributes [9]: [first(Departamento#31787)()#33821, first(Ano#31800)()#33823, first(Mes#31812)()#33825, first(Dia#31824)()#33827, first(Semana_Epidemiologica#31771)()#33829, first(Precipitacion_acumulada#31836)()#33831, first(Temperatura_maxima#31848)()#33833, first(Temperatura_minima#31860)()#33835, first(tc#31872)()#33837]
+Results [11]: [first(Departamento#31787)()#33821 AS Departamento#33822, Estacion#31766, first(Ano#31800)()#33823 AS Ano#33824, first(Mes#31812)()#33825 AS Mes#33826, first(Dia#31824)()#33827 AS Dia#33828, Fecha#31770, first(Semana_Epidemiologica#31771)()#33829 AS Semana_Epidemiologica#33830, first(Precipitacion_acumulada#31836)()#33831 AS Precipitacion_acumulada#33832, first(Temperatura_maxima#31848)()#33833 AS Temperatura_maxima#33834, first(Temperatura_minima#31860)()#33835 AS Temperatura_minima#33836, first(tc#31872)()#33837 AS tc#33838]
+
+(12) AdaptiveSparkPlan
+Output [11]: [Departamento#33822, Estacion#31766, Ano#33824, Mes#33826, Dia#33828, Fecha#31770, Semana_Epidemiologica#33830, Precipitacion_acumulada#33832, Temperatura_maxima#33834, Temperatura_minima#33836, tc#33838]
+Arguments: isFinalPlan=false
+
+
