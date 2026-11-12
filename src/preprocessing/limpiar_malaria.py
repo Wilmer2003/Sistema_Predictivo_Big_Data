@@ -4,7 +4,10 @@ from pyspark.sql.functions import (
     trim,
     upper,
     regexp_replace,
-    lpad
+    lpad,
+    when,
+    sha2,
+    substring
 )
 
 # ============================================================
@@ -384,6 +387,52 @@ print(
 )
 
 # ============================================================
+# 16B. PROTECCIÓN DE DATOS SENSIBLES (EDAD Y LOCALIDAD)
+# ============================================================
+# "edad" y "localidad" son cuasi-identificadores: combinados con
+# diagnostico/semana epidemiologica permiten reidentificar a una
+# persona en localidades pequeñas con pocos casos. Se aplican dos
+# tecnicas sobre columnas derivadas (no se sobrescribe el dato
+# original en "df", solo se excluye de "df_final" mas abajo):
+#
+#   - Generalizacion: "edad" exacta -> "edad_rango" (rango de 10-15
+#     años). Reduce la granularidad del cuasi-identificador.
+#   - Seudonimizacion: "localidad" -> "localidad_hash" (SHA-256
+#     truncado a 12 caracteres). No reversible, pero es
+#     deterministico: una misma localidad siempre produce el mismo
+#     hash, lo que permite seguir agrupando/contando por localidad
+#     sin exponer su nombre real en el dataset curado.
+#
+# Riesgo residual: si una localidad tiene muy pocos casos en una
+# semana, la combinacion rango_edad + sexo + semana + diagnostico
+# puede seguir siendo unica dentro de ese hash (bajo k-anonimato).
+# El hash protege el nombre de la localidad, no la unicidad del
+# registro.
+
+if "edad" in df.columns:
+
+    df = df.withColumn(
+        "edad_rango",
+        when(col("edad") < 5, "0-4")
+        .when(col("edad") < 15, "5-14")
+        .when(col("edad") < 45, "15-44")
+        .when(col("edad") < 65, "45-64")
+        .when(col("edad").isNotNull(), "65+")
+        .otherwise("SIN_DATO")
+    )
+
+if "localidad" in df.columns:
+
+    df = df.withColumn(
+        "localidad_hash",
+        substring(
+            sha2(upper(trim(col("localidad"))), 256),
+            1,
+            12
+        )
+    )
+
+# ============================================================
 # 17. COLUMNAS FINALES
 # ============================================================
 
@@ -391,7 +440,7 @@ columnas_finales = [
     "departamento",
     "provincia",
     "distrito",
-    "localidad",
+    "localidad_hash",
     "enfermedad",
     "ano",
     "semana",
@@ -399,7 +448,7 @@ columnas_finales = [
     "diresa",
     "ubigeo",
     "localcod",
-    "edad",
+    "edad_rango",
     "tipo_edad",
     "sexo",
     "Malaria_total",

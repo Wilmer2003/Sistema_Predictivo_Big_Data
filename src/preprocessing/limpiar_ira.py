@@ -5,7 +5,8 @@ from pyspark.sql.functions import (
     trim,
     upper,
     regexp_replace,
-    lpad
+    lpad,
+    when
 )
 
 # ============================================================
@@ -303,6 +304,58 @@ print(
 )
 
 # ============================================================
+# 16B. PROTECCIÓN DE DATOS SENSIBLES (CELDAS PEQUEÑAS)
+# ============================================================
+# IRA viene agregado por distrito y semana epidemiologica (no es
+# un registro por persona), pero sigue siendo un dato de salud
+# sensible por categoria y, ademas, incluye casos en menores de
+# edad (grupos "_menores_2_meses" y "_1_a_4_anos"), sujetos a
+# proteccion reforzada. Al revisar el CSV original se detecto
+# riesgo de "small cell disclosure": muchas celdas distrito-semana
+# tienen conteos de 1 a 3 casos (ej. ~8% de las filas tienen
+# exactamente 1 caso en "IRA_menores_2_meses"), lo que en un
+# distrito pequeno puede permitir inferir el caso individual.
+#
+# Tecnica aplicada: bandeo/generalizacion de celda pequeña. Se
+# agrega, junto a cada conteo exacto, una version "_rango" con el
+# valor agrupado en bandas (0, 1-4, 5-9, 10-19, 20+). El conteo
+# exacto se conserva porque es la variable objetivo del modelo
+# predictivo (no se puede eliminar sin romper el proposito del
+# proyecto); la version en rango es la que debe usarse en tablas,
+# graficos o reportes que se compartan fuera del equipo del
+# proyecto.
+#
+# Riesgo residual: el conteo exacto sigue existiendo en el dataset
+# curado para fines de modelamiento. Si ese archivo se comparte
+# sin control de acceso, el riesgo de celda pequeña persiste; la
+# mitigacion solo es efectiva en la capa de reportes/salidas
+# publicas (columnas "_rango"), no en la capa de datos interna.
+
+columnas_conteo = [
+    "IRA_menores_2_meses",
+    "IRA_2_a_11_meses",
+    "IRA_1_a_4_anos",
+    "Neumonia_menores_2_meses",
+    "Neumonia_2_a_11_meses",
+    "Neumonia_1_a_4_anos",
+    "Defunciones"
+]
+
+for columna in columnas_conteo:
+
+    if columna in df.columns:
+
+        df = df.withColumn(
+            columna + "_rango",
+            when(col(columna) == 0, "0")
+            .when(col(columna) < 5, "1-4")
+            .when(col(columna) < 10, "5-9")
+            .when(col(columna) < 20, "10-19")
+            .when(col(columna).isNotNull(), "20+")
+            .otherwise("SIN_DATO")
+        )
+
+# ============================================================
 # 17. RECONSTRUIR DATAFRAME FINAL
 # ============================================================
 
@@ -315,12 +368,19 @@ columnas_finales = [
     "Codigo_Departamento",
     "Codigo_Ubigeo",
     "IRA_menores_2_meses",
+    "IRA_menores_2_meses_rango",
     "IRA_2_a_11_meses",
+    "IRA_2_a_11_meses_rango",
     "IRA_1_a_4_anos",
+    "IRA_1_a_4_anos_rango",
     "Neumonia_menores_2_meses",
+    "Neumonia_menores_2_meses_rango",
     "Neumonia_2_a_11_meses",
+    "Neumonia_2_a_11_meses_rango",
     "Neumonia_1_a_4_anos",
-    "Defunciones"
+    "Neumonia_1_a_4_anos_rango",
+    "Defunciones",
+    "Defunciones_rango"
 ]
 
 columnas_existentes = [
