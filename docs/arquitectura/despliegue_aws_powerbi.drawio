@@ -1,0 +1,120 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="despliegue-aws" name="Despliegue AWS + Power BI">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1160" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="Diagrama de despliegue: pipeline Bronze, Silver y Gold en AWS" style="text;html=1;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="20" y="2" width="800" height="26" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="g_lap" value="Laptop del equipo (Windows), fuera de AWS" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#888780;verticalAlign=top;align=left;spacingLeft=60;spacingTop=14;fontStyle=1;fontSize=12;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="20" y="30" width="290" height="640" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_aws" value="AWS Cloud" style="outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#232F3E;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="30" width="740" height="640" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_s3" value="Amazon S3: data lake" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#888780;verticalAlign=top;align=left;spacingLeft=60;spacingTop=14;fontStyle=1;fontSize=12;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="400" y="100" width="310" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_vpc" value="VPC (red privada de AWS)" style="outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc2;strokeColor=#8C4FFF;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#232F3E;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="740" y="100" width="360" height="540" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_emr" value="Amazon EMR: clúster Spark en YARN" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#888780;verticalAlign=top;align=left;spacingLeft=60;spacingTop=14;fontStyle=1;fontSize=12;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="760" y="150" width="320" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_rds" value="Amazon RDS: PostgreSQL" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=none;strokeColor=#888780;verticalAlign=top;align=left;spacingLeft=60;spacingTop=14;fontStyle=1;fontSize=12;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="760" y="480" width="320" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ic_client" value="" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.client;" vertex="1" parent="1">
+          <mxGeometry x="32" y="40" width="48" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="ic_s3" value="" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="412" y="108" width="46" height="46" as="geometry"/>
+        </mxCell>
+        <mxCell id="ic_emr" value="" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#945DF2;gradientDirection=north;fillColor=#5A30B5;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.emr;" vertex="1" parent="1">
+          <mxGeometry x="772" y="158" width="46" height="46" as="geometry"/>
+        </mxCell>
+        <mxCell id="ic_rds" value="" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#4D72F3;gradientDirection=north;fillColor=#3334B9;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.rds;" vertex="1" parent="1">
+          <mxGeometry x="772" y="488" width="46" height="46" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="csv" value="Archivos CSV del lote nuevo&lt;br&gt;(IRA, malaria, SENAMHI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1EFE8;strokeColor=#5F5E5A;fontColor=#2C2C2A;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="130" width="250" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="orq" value="&lt;b&gt;Orquestador&lt;/b&gt;&lt;br&gt;run_pipeline.py (Python + boto3)&lt;br&gt;Hash del lote y control de pasos" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEEDFE;strokeColor=#534AB7;fontColor=#3C3489;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="290" width="250" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="pbi" value="&lt;b&gt;Power BI Desktop&lt;/b&gt;&lt;br&gt;Páginas: Vigilancia y Estado del pipeline&lt;br&gt;DirectQuery o Actualizar" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4CC;strokeColor=#B8860B;fontColor=#5C4400;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="500" width="250" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="b_bronze" value="bronze/&lt;br&gt;lotes CSV" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5EE;strokeColor=#0F6E56;fontColor=#085041;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="416" y="190" width="130" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="b_silver" value="silver/&lt;br&gt;Parquet limpio" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5EE;strokeColor=#0F6E56;fontColor=#085041;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="564" y="190" width="130" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="b_gold" value="gold/&lt;br&gt;tablas analíticas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5EE;strokeColor=#0F6E56;fontColor=#085041;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="416" y="245" width="130" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="b_modelos" value="modelos/&lt;br&gt;modelo MLlib" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5EE;strokeColor=#0F6E56;fontColor=#085041;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="564" y="245" width="130" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="j1" value="Ingesta: valida el esquema del lote" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEEDFE;strokeColor=#534AB7;fontColor=#3C3489;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="780" y="225" width="280" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="j2" value="Limpieza: Bronze a Silver (PySpark)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEEDFE;strokeColor=#534AB7;fontColor=#3C3489;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="780" y="270" width="280" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="j3" value="Integración y features: Silver a Gold" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEEDFE;strokeColor=#534AB7;fontColor=#3C3489;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="780" y="315" width="280" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="j4" value="Spark MLlib: entrena y predice" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEEDFE;strokeColor=#534AB7;fontColor=#3C3489;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="780" y="360" width="280" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="j5" value="Carga JDBC de Gold a PostgreSQL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEEDFE;strokeColor=#534AB7;fontColor=#3C3489;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="780" y="405" width="280" height="36" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="rdsbox" value="Tablas Gold, predicciones y control de lotes (tabla lotes)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5EE;strokeColor=#0F6E56;fontColor=#085041;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="780" y="545" width="280" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="note" value="Security group: puerto 5432 solo desde la IP del equipo" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;fontColor=#444441;" vertex="1" parent="1">
+          <mxGeometry x="770" y="612" width="320" height="22" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="a1" value="lote nuevo" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;endFill=1;strokeColor=#232F3E;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="csv" target="orq">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a2" value="boto3 (S3)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;endFill=1;strokeColor=#232F3E;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.8;entryDx=0;entryDy=0;" edge="1" parent="1" source="orq" target="g_s3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a3" value="boto3 (EMR)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;endFill=1;strokeColor=#232F3E;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.65;entryDx=0;entryDy=0;" edge="1" parent="1" source="orq" target="g_emr">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a4" value="s3://" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=classic;startFill=1;endArrow=classic;endFill=1;strokeColor=#232F3E;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.2;exitDx=0;exitDy=0;entryX=1;entryY=0.55;entryDx=0;entryDy=0;" edge="1" parent="1" source="g_emr" target="g_s3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a5" value="JDBC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;endFill=1;strokeColor=#232F3E;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="g_emr" target="g_rds">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="a6" value="lotes (5432)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;startArrow=classic;startFill=1;endArrow=classic;endFill=1;strokeColor=#232F3E;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="orq" target="g_rds">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="165" y="430"/>
+              <mxPoint x="560" y="430"/>
+              <mxPoint x="560" y="519"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a7" value="Power BI (5432)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;endFill=1;strokeColor=#232F3E;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="pbi" target="g_rds">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
