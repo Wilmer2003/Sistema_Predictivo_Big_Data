@@ -30,3 +30,35 @@ results/
 # =========================
 .DS_Store
 Thumbs.db
+
+# Hadoop y Spark
+*.crc
+_SUCCESS
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Datos: no se versionan (se conservan README y .gitkeep)
+data/**
+!data/**/
+!data/**/.gitkeep
+!data/README.md
+
+# Resultados pesados
+results/modelos/*
+!results/modelos/.gitkeep
+
+# Entornos, credenciales y temporales
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+*.pem
+
+# Power BI: solo plantilla .pbit, nunca .pbix
+*.pbix
