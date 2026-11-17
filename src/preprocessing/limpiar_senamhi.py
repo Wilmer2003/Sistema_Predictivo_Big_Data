@@ -1,424 +1,172 @@
-from pyspark.sql import SparkSession
+"""
+Pipeline de Limpieza y Estandarización de Datos Meteorológicos de SENAMHI (Capa Silver).
+Construye Fecha y Semana Epidemiológica ISO, aplica tipado estricto, valida rangos físicos
+(PP >= 0, Tmin <= Tmax), deduplica por Estación + Fecha y escribe Parquet particionado.
+"""
+
+from typing import Optional
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     col,
     trim,
     upper,
     regexp_extract,
     regexp_replace,
-    to_date,
-    weekofyear,
-    concat_ws,
-    lpad
+)
+from pyspark.sql.types import IntegerType, DoubleType
+
+from src.common.config import get_config, AppConfig, ANIO_INICIAL, ANIO_FINAL, NOMBRE_DEPARTAMENTO_LA_LIBERTAD
+from src.common.logger import get_logger
+from src.common.spark_session import get_spark_session
+from src.common.epi_utils import with_fecha_from_ymd, with_semana_epidemiologica
+from src.ingestion.batch_manager import BatchControlManager
+from src.preprocessing.base_preprocessor import (
+    normalize_column_names,
+    write_partitioned_parquet_incremental,
 )
 
-# ============================================================
-# 1. CREAR SESIÓN SPARK
-# ============================================================
+logger = get_logger("Limpieza_SENAMHI")
 
-spark = (
-    SparkSession.builder
-    .appName("Limpieza_SENAMHI")
-    .master("local[4]")
-    .config("spark.driver.memory", "2g")
-    .config("spark.sql.shuffle.partitions", "8")
-    .config("spark.sql.constraintPropagation.enabled", "false")
-    .getOrCreate()
-)
-
-# ============================================================
-# 2. RUTAS HDFS
-# ============================================================
-
-ruta_entrada = (
-    "hdfs://localhost:9000/datalake/raw/senamhi/"
-    "dataset_SENAMHI.csv"
-)
-
-ruta_csv = (
-    "hdfs://localhost:9000/datalake/processed/senamhi/csv"
-)
-
-ruta_parquet = (
-    "hdfs://localhost:9000/datalake/processed/senamhi/parquet"
-)
-
-# ============================================================
-# 3. LECTURA DEL DATASET
-# ============================================================
-
-print("\n========== LECTURA DEL DATASET ==========")
-
-df = (
-    spark.read
-    .option("header", True)
-    .option("inferSchema", True)
-    .option("encoding", "UTF-8")
-    .option("sep", ",")
-    .csv(ruta_entrada)
-)
-
-print("\n========== ESQUEMA ORIGINAL ==========")
-df.printSchema()
-
-print("\n========== COLUMNAS ORIGINALES ==========")
-print(df.columns)
-
-# ============================================================
-# 4. NORMALIZAR NOMBRES DE COLUMNAS
-# ============================================================
-
-for nombre in df.columns:
-
-    nuevo_nombre = (
-        nombre.strip()
-        .replace(" ", "_")
-        .replace("á", "a")
-        .replace("é", "e")
-        .replace("í", "i")
-        .replace("ó", "o")
-        .replace("ú", "u")
-        .replace("ñ", "n")
-        .replace("Á", "A")
-        .replace("É", "E")
-        .replace("Í", "I")
-        .replace("Ó", "O")
-        .replace("Ú", "U")
-        .replace("Ñ", "N")
-    )
-
-    df = df.withColumnRenamed(
-        nombre,
-        nuevo_nombre
-    )
-
-print("\n========== COLUMNAS NORMALIZADAS ==========")
-print(df.columns)
-
-# ============================================================
-# 5. LIMPIEZA DEL CAMPO LUGAR
-# ============================================================
-# El campo "Lugar" llega como "ESTACION (DEPARTAMENTO)".
-# Se separa en Estacion y Departamento para poder integrarse
-# más adelante con IRA y Malaria por Departamento.
-
-df = df.withColumn(
-    "Lugar",
-    trim(col("Lugar"))
-)
-
-df = df.withColumn(
-    "Departamento",
-    trim(
-        regexp_extract(
-            col("Lugar"),
-            r"\(([^()]+)\)\s*$",
-            1
-        )
-    )
-)
-
-df = df.withColumn(
-    "Estacion",
-    trim(
-        regexp_replace(
-            col("Lugar"),
-            r"\s*\([^()]+\)\s*$",
-            ""
-        )
-    )
-)
-
-# ============================================================
-# 6. CONVERSIÓN DE TIPOS
-# ============================================================
-
-for columna in ["Ano", "Mes", "Dia"]:
-
-    if columna in df.columns:
-
-        df = df.withColumn(
-            columna,
-            col(columna).cast("integer")
-        )
-
-for columna in [
+VARIABLES_METEOROLOGICAS = [
     "Precipitacion_acumulada",
     "Temperatura_maxima",
     "Temperatura_minima",
-    "tc"
-]:
+    "tc",
+]
 
-    if columna in df.columns:
 
-        df = df.withColumn(
-            columna,
-            col(columna).cast("double")
-        )
+def transformar_datos_senamhi(df: DataFrame) -> DataFrame:
+    """
+    Aplica las transformaciones de limpieza y validación sobre datos de SENAMHI.
 
-# ============================================================
-# 7. CONSTRUIR FECHA Y SEMANA EPIDEMIOLÓGICA
-# ============================================================
+    Args:
+        df: DataFrame de PySpark con datos meteorológicos crudos.
 
-df = df.withColumn(
-    "Fecha",
-    to_date(
-        concat_ws(
-            "-",
-            col("Ano"),
-            lpad(col("Mes").cast("string"), 2, "0"),
-            lpad(col("Dia").cast("string"), 2, "0")
-        ),
-        "yyyy-MM-dd"
+    Returns:
+        DataFrame: Datos procesados y validados para la capa Silver.
+    """
+    # 1. Normalizar nombres de columnas
+    df = normalize_column_names(df)
+
+    # 2. Descomponer Lugar en Estacion y Departamento si viene en formato "ESTACION (DEPARTAMENTO)"
+    if "Lugar" in df.columns:
+        df = df.withColumn("Lugar", trim(col("Lugar")))
+        if "Departamento" not in df.columns:
+            df = df.withColumn(
+                "Departamento",
+                trim(regexp_extract(col("Lugar"), r"\(([^()]+)\)\s*$", 1)),
+            )
+        if "Estacion" not in df.columns:
+            df = df.withColumn(
+                "Estacion",
+                trim(regexp_replace(col("Lugar"), r"\s*\([^()]+\)\s*$", "")),
+            )
+
+    if "Estacion" in df.columns:
+        df = df.withColumn("Estacion", trim(col("Estacion")))
+    if "Departamento" in df.columns:
+        df = df.withColumn("Departamento", trim(col("Departamento")))
+
+    # 3. Conversión de tipos
+    for c in ["Ano", "Mes", "Dia"]:
+        if c in df.columns:
+            df = df.withColumn(c, col(c).cast(IntegerType()))
+
+    for c in VARIABLES_METEOROLOGICAS:
+        if c in df.columns:
+            df = df.withColumn(c, col(c).cast(DoubleType()))
+
+    # 4. Construir Fecha y Semana Epidemiológica si no existen
+    if "Fecha" not in df.columns and all(c in df.columns for c in ["Ano", "Mes", "Dia"]):
+        df = with_fecha_from_ymd(df, anio_col="Ano", mes_col="Mes", dia_col="Dia", output_col="Fecha")
+
+    if "Semana_Epidemiologica" not in df.columns and "Fecha" in df.columns:
+        df = with_semana_epidemiologica(df, fecha_col="Fecha", output_col="Semana_Epidemiologica")
+    elif "Semana_Epidemiologica" in df.columns:
+        df = df.withColumn("Semana_Epidemiologica", col("Semana_Epidemiologica").cast(IntegerType()))
+
+    # 5. Descartar filas completamente vacías o sin fecha válida
+    df = df.dropna(how="all")
+    if "Fecha" in df.columns:
+        df = df.filter(col("Fecha").isNotNull())
+
+    # 6. Filtrar La Libertad
+    if "Departamento" in df.columns:
+        df = df.filter(upper(trim(col("Departamento"))) == NOMBRE_DEPARTAMENTO_LA_LIBERTAD)
+
+    # 7. Filtrar período 2015 - 2024
+    if "Ano" in df.columns:
+        df = df.filter((col("Ano") >= ANIO_INICIAL) & (col("Ano") <= ANIO_FINAL))
+
+    # 8. Control de consistencia física
+    # Precipitacion no negativa, Temperatura mínima <= Temperatura máxima
+    if "Precipitacion_acumulada" in df.columns:
+        df = df.filter(col("Precipitacion_acumulada") >= 0.0)
+
+    if "Temperatura_minima" in df.columns and "Temperatura_maxima" in df.columns:
+        df = df.filter(col("Temperatura_minima") <= col("Temperatura_maxima"))
+
+    # 9. Deduplicación por clave primaria (Estación + Fecha)
+    if "Estacion" in df.columns and "Fecha" in df.columns:
+        df = df.dropDuplicates(["Estacion", "Fecha"])
+    else:
+        df = df.dropDuplicates()
+
+    # 10. Columnas finales estandarizadas
+    columnas_finales = [
+        "Departamento",
+        "Estacion",
+        "Ano",
+        "Mes",
+        "Dia",
+        "Fecha",
+        "Semana_Epidemiologica",
+        "Precipitacion_acumulada",
+        "Temperatura_maxima",
+        "Temperatura_minima",
+        "tc",
+    ]
+    cols_presentes = [c for c in columnas_finales if c in df.columns]
+    return df.select(*cols_presentes)
+
+
+def procesar_silver_senamhi(
+    spark: Optional[SparkSession] = None,
+    input_path: Optional[str] = None,
+    output_parquet_path: Optional[str] = None,
+    config: Optional[AppConfig] = None,
+) -> DataFrame:
+    """
+    Ejecuta el pipeline de Bronze a Silver para SENAMHI.
+    """
+    cfg = config or get_config()
+    active_spark = spark or get_spark_session(app_name="Limpieza_SENAMHI", config=cfg)
+
+    ruta_in = input_path or f"{cfg.get_bronze_path('senamhi')}/*/*.csv"
+    ruta_out = output_parquet_path or f"{cfg.get_silver_path('senamhi')}/parquet"
+
+    logger.info("Leyendo datos crudos de SENAMHI desde: %s", ruta_in)
+    df_raw = (
+        active_spark.read
+        .option("header", True)
+        .option("sep", ",")
+        .option("encoding", "UTF-8")
+        .csv(ruta_in)
     )
-)
 
-df = df.withColumn(
-    "Semana_Epidemiologica",
-    weekofyear(col("Fecha"))
-)
+    df_silver = transformar_datos_senamhi(df_raw)
 
-# ============================================================
-# 8. ELIMINAR FILAS COMPLETAMENTE VACÍAS O SIN FECHA VÁLIDA
-# ============================================================
+    # Escribir Parquet particionado por 'Ano'
+    write_partitioned_parquet_incremental(df_silver, ruta_out, partition_col="Ano")
 
-df = df.dropna(how="all")
+    # Actualizar estado de lotes en el gestor de control
+    control_mgr = BatchControlManager(config=cfg)
+    for b in control_mgr.get_pending_batches(source="senamhi"):
+        control_mgr.update_batch_status(b.file_hash, "PROCESSED_SILVER")
 
-df = df.filter(
-    col("Fecha").isNotNull()
-)
+    logger.info("Pipeline Silver de SENAMHI concluido con éxito.")
+    return df_silver
 
-# ============================================================
-# 9. FILTRAR LA LIBERTAD
-# ============================================================
 
-print("\n========== FILTRANDO LA LIBERTAD ==========")
-
-df = df.filter(
-    upper(
-        trim(
-            col("Departamento")
-        )
-    ) == "LA LIBERTAD"
-)
-
-print(
-    "Registros después de filtrar LA LIBERTAD:",
-    df.count()
-)
-
-# ============================================================
-# 10. FILTRAR PERÍODO 2015 - 2024
-# ============================================================
-
-print("\n========== FILTRANDO PERÍODO ==========")
-
-df = df.filter(
-    (col("Ano") >= 2015) &
-    (col("Ano") <= 2024)
-)
-
-# ============================================================
-# 10B. MATERIALIZAR EN CACHÉ
-# ============================================================
-# Sin esto, cada acción posterior (count/show) recalcula toda
-# la cadena de filtros desde el CSV original: el optimizador de
-# Spark vuelve a analizar un plan lógico cada vez más largo y el
-# tiempo de planificación crece de forma no lineal. Al cachear
-# aquí se corta esa cadena y las acciones siguientes reutilizan
-# el resultado ya filtrado.
-
-df = df.cache()
-df.count()
-
-# ============================================================
-# 11. CONTROL DE RANGOS FÍSICOS DE LAS VARIABLES
-# ============================================================
-# Reglas de calidad: la temperatura mínima no puede superar a la
-# máxima y la precipitación no puede ser negativa.
-
-print("\n========== CONTROL DE RANGOS ==========")
-
-registros_antes_rango = df.count()
-
-df = df.filter(
-    (col("Precipitacion_acumulada") >= 0) &
-    (col("Temperatura_minima") <= col("Temperatura_maxima"))
-)
-
-registros_despues_rango = df.count()
-
-print("Registros antes del control de rango:", registros_antes_rango)
-print("Registros después del control de rango:", registros_despues_rango)
-print(
-    "Registros descartados por rango inválido:",
-    registros_antes_rango - registros_despues_rango
-)
-
-# ============================================================
-# 12. CONTROL DEL PERÍODO
-# ============================================================
-
-print("\n========== CONTROL DEL PERÍODO ==========")
-
-print(
-    "Total de registros:",
-    df.count()
-)
-
-print(
-    "Año mínimo:",
-    df.selectExpr("min(Ano)").first()[0]
-)
-
-print(
-    "Año máximo:",
-    df.selectExpr("max(Ano)").first()[0]
-)
-
-print("\nDistribución por año:")
-
-(
-    df
-    .groupBy("Ano")
-    .count()
-    .orderBy("Ano")
-    .show(20)
-)
-
-print("\nEstaciones encontradas:")
-
-(
-    df
-    .select("Estacion")
-    .distinct()
-    .orderBy("Estacion")
-    .show(20, truncate=False)
-)
-
-print("\nCantidad de estaciones:")
-
-print(
-    df.select("Estacion")
-    .distinct()
-    .count()
-)
-
-# ============================================================
-# 13. ELIMINAR DUPLICADOS
-# ============================================================
-
-print("\n========== ELIMINANDO DUPLICADOS ==========")
-
-registros_antes = df.count()
-
-df = df.dropDuplicates(["Estacion", "Fecha"])
-
-registros_despues = df.count()
-
-print("Registros antes:", registros_antes)
-print("Registros después:", registros_despues)
-print(
-    "Duplicados eliminados:",
-    registros_antes - registros_despues
-)
-
-# ============================================================
-# 14. COLUMNAS FINALES
-# ============================================================
-
-columnas_finales = [
-    "Departamento",
-    "Estacion",
-    "Ano",
-    "Mes",
-    "Dia",
-    "Fecha",
-    "Semana_Epidemiologica",
-    "Precipitacion_acumulada",
-    "Temperatura_maxima",
-    "Temperatura_minima",
-    "tc"
-]
-
-columnas_existentes = [
-    c for c in columnas_finales
-    if c in df.columns
-]
-
-df_final = df.select(
-    *columnas_existentes
-)
-
-# ============================================================
-# 15. CONTROL FINAL
-# ============================================================
-
-print("\n========== ESQUEMA FINAL ==========")
-
-df_final.printSchema()
-
-print("\n========== DATOS FINALES ==========")
-
-df_final.show(
-    10,
-    truncate=False
-)
-
-print("\n========== TOTAL FINAL ==========")
-
-print(
-    df_final.count()
-)
-
-# ============================================================
-# 16. GUARDAR CSV
-# ============================================================
-
-print("\n========== GUARDANDO CSV ==========")
-
-(
-    df_final
-    .write
-    .mode("overwrite")
-    .option("header", True)
-    .option("encoding", "UTF-8")
-    .option("sep", ",")
-    .csv(ruta_csv)
-)
-
-print("CSV guardado correctamente.")
-
-# ============================================================
-# 17. GUARDAR PARQUET
-# ============================================================
-
-print("\n========== GUARDANDO PARQUET ==========")
-
-(
-    df_final
-    .write
-    .mode("overwrite")
-    .partitionBy("Ano")
-    .parquet(ruta_parquet)
-)
-
-print("Parquet guardado correctamente.")
-
-# ============================================================
-# 18. FINAL
-# ============================================================
-
-print("\n==========================================")
-print("      LIMPIEZA SENAMHI FINALIZADA")
-print("==========================================")
-
-print("CSV:")
-print(ruta_csv)
-
-print("\nParquet:")
-print(ruta_parquet)
-
-print("\nRegistros finales:")
-print(df_final.count())
-
-spark.stop()
+if __name__ == "__main__":
+    procesar_silver_senamhi()

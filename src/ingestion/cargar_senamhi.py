@@ -1,54 +1,78 @@
-import subprocess
+"""
+Script de Ingesta para Datos Meteorológicos (SENAMHI).
+Copia el archivo crudo a la capa Bronze particionado por fecha de carga,
+verificando el hash SHA-256 en el registro de control de lotes.
+"""
 
-# ============================================================
-# 1. RUTAS
-# ============================================================
-# Zona Bronze (raw): archivo tal cual llega de la fuente, sin
-# ninguna transformación. Se mantiene el mismo nombre que
-# espera src/preprocessing/limpiar_senamhi.py.
+import argparse
+from pathlib import Path
+import sys
+from typing import Optional
+from src.common.config import get_config
+from src.common.logger import get_logger
+from src.ingestion.raw_ingestor import ingest_raw_file
+from src.ingestion.batch_manager import BatchMetadata
 
-ruta_local = (
-    "/home/scaipotru/Documentos/Sistema_Predictivo_Big_Data/"
-    "data/raw/senamhi/Clima_LaLibertad_2015_2024_Completo.csv"
-)
+logger = get_logger("Ingesta_SENAMHI")
 
-ruta_hdfs_dir = "/datalake/raw/senamhi"
 
-ruta_hdfs_archivo = f"{ruta_hdfs_dir}/dataset_SENAMHI.csv"
+def buscar_archivo_candidato() -> Optional[str]:
+    """Busca archivos CSV candidatos disponibles en el repositorio para SENAMHI."""
+    cfg = get_config()
+    rutas_candidatas = [
+        cfg.root_dir / "data" / "raw" / "senamhi" / "dataset_SENAMHI.csv",
+        cfg.root_dir / "data" / "raw" / "senamhi" / "Clima_LaLibertad_2015_2024_Completo.csv",
+        cfg.root_dir / "data" / "processed" / "senamhi" / "Clima_La_Libertad_2015_2024.csv",
+    ]
+    for ruta in rutas_candidatas:
+        if ruta.is_file():
+            return str(ruta)
+    return None
 
-# ============================================================
-# 2. CREAR DIRECTORIO EN HDFS
-# ============================================================
 
-print("\n========== CREANDO DIRECTORIO EN HDFS ==========")
+def cargar_senamhi(archivo_origen: Optional[str] = None, force: bool = False) -> Optional[BatchMetadata]:
+    """
+    Ejecuta el proceso de ingesta del lote de SENAMHI a la capa Bronze.
 
-subprocess.run(
-    ["hdfs", "dfs", "-mkdir", "-p", ruta_hdfs_dir],
-    check=True
-)
+    Args:
+        archivo_origen: Ruta al archivo CSV a cargar. Si es None, busca candidato local.
+        force: Si es True, fuerza la ingesta aunque el hash ya haya sido procesado.
 
-# ============================================================
-# 3. CARGAR ARCHIVO A LA ZONA RAW (BRONZE)
-# ============================================================
+    Returns:
+        Optional[BatchMetadata]: Metadatos del lote si fue ingerido, None si fue omitido o falló.
+    """
+    ruta_archivo = archivo_origen or buscar_archivo_candidato()
+    if not ruta_archivo:
+        logger.error("No se encontró ningún archivo CSV de SENAMHI para ingerir.")
+        return None
 
-print("\n========== CARGANDO ARCHIVO A HDFS ==========")
+    logger.info("Iniciando ingesta de SENAMHI desde: %s (force=%s)", ruta_archivo, force)
+    exito, metadata, estado = ingest_raw_file(
+        file_path=ruta_archivo,
+        source="senamhi",
+        force=force,
+    )
 
-subprocess.run(
-    ["hdfs", "dfs", "-put", "-f", ruta_local, ruta_hdfs_archivo],
-    check=True
-)
+    if exito and metadata:
+        logger.info("Ingesta de SENAMHI finalizada exitosamente. Lote: %s", metadata.batch_id)
+        return metadata
+    elif estado == "SKIPPED_DUPLICATE":
+        logger.info("Lote de SENAMHI ya existente (duplicado). Proceso omitido sin error.")
+        return None
+    else:
+        logger.error("Error al ingerir archivo de SENAMHI: %s", estado)
+        return None
 
-print("Archivo cargado en:", ruta_hdfs_archivo)
 
-# ============================================================
-# 4. VERIFICACIÓN
-# ============================================================
+def main():
+    parser = argparse.ArgumentParser(description="Ingesta de datos crudos de SENAMHI a la capa Bronze.")
+    parser.add_argument("--archivo", type=str, default=None, help="Ruta al archivo CSV de entrada.")
+    parser.add_argument("--force", action="store_true", help="Forzar la recarga ignorando el hash SHA-256.")
+    args = parser.parse_args()
 
-print("\n========== VERIFICANDO CARGA ==========")
+    meta = cargar_senamhi(archivo_origen=args.archivo, force=args.force)
+    sys.exit(0 if meta or not args.force else 1)
 
-subprocess.run(
-    ["hdfs", "dfs", "-ls", "-h", ruta_hdfs_dir],
-    check=True
-)
 
-print("\nIngesta de SENAMHI finalizada correctamente.")
+if __name__ == "__main__":
+    main()

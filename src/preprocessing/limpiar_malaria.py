@@ -1,103 +1,34 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    col,
-    trim,
-    upper,
-    regexp_replace,
-    lpad,
-    when,
-    sha2,
-    substring
+"""
+Pipeline de Limpieza y Estandarización de Datos de Malaria (Capa Silver).
+Aplica tipado estricto, normalización de Ubigeo (6 dígitos) y localcod (10 dígitos),
+filtrado para La Libertad (13), diagnósticos B50/B51 y escritura en Parquet particionado.
+"""
+
+from typing import Optional
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col, lpad, regexp_replace, trim
+from pyspark.sql.types import IntegerType
+
+from src.common.config import (
+    get_config,
+    AppConfig,
+    ANIO_INICIAL,
+    ANIO_FINAL,
+    DIAGNOSTICOS_MALARIA,
+)
+from src.common.logger import get_logger
+from src.common.spark_session import get_spark_session
+from src.common.geo_utils import with_standardized_ubigeo, filter_la_libertad
+from src.ingestion.batch_manager import BatchControlManager
+from src.preprocessing.base_preprocessor import (
+    normalize_column_names,
+    trim_text_columns,
+    write_partitioned_parquet_incremental,
 )
 
-# ============================================================
-# 1. CREAR SESIÓN SPARK
-# ============================================================
+logger = get_logger("Limpieza_Malaria")
 
-spark = (
-    SparkSession.builder
-    .appName("Limpieza_Malaria")
-    .master("local[4]")
-    .config("spark.driver.memory", "2g")
-    .config("spark.sql.shuffle.partitions", "8")
-    .config("spark.sql.constraintPropagation.enabled", "false")
-    .getOrCreate()
-)
-
-# ============================================================
-# 2. RUTAS HDFS
-# ============================================================
-
-ruta_entrada = (
-    "hdfs://localhost:9000/datalake/raw/malaria/"
-    "dataset_Malaria.csv"
-)
-
-ruta_csv = (
-    "hdfs://localhost:9000/datalake/processed/malaria/csv"
-)
-
-ruta_parquet = (
-    "hdfs://localhost:9000/datalake/processed/malaria/parquet"
-)
-
-# ============================================================
-# 3. LECTURA DEL DATASET
-# ============================================================
-
-print("\n========== LECTURA DEL DATASET ==========")
-
-df = (
-    spark.read
-    .option("header", True)
-    .option("inferSchema", True)
-    .option("encoding", "UTF-8")
-    .option("sep", ",")
-    .csv(ruta_entrada)
-)
-
-print("\n========== ESQUEMA ORIGINAL ==========")
-df.printSchema()
-
-print("\n========== COLUMNAS ORIGINALES ==========")
-print(df.columns)
-
-# ============================================================
-# 4. NORMALIZAR NOMBRES DE COLUMNAS
-# ============================================================
-
-for nombre in df.columns:
-
-    nuevo_nombre = (
-        nombre.strip()
-        .replace(" ", "_")
-        .replace("á", "a")
-        .replace("é", "e")
-        .replace("í", "i")
-        .replace("ó", "o")
-        .replace("ú", "u")
-        .replace("ñ", "n")
-        .replace("Á", "A")
-        .replace("É", "E")
-        .replace("Í", "I")
-        .replace("Ó", "O")
-        .replace("Ú", "U")
-        .replace("Ñ", "N")
-    )
-
-    df = df.withColumnRenamed(
-        nombre,
-        nuevo_nombre
-    )
-
-print("\n========== COLUMNAS NORMALIZADAS ==========")
-print(df.columns)
-
-# ============================================================
-# 5. LIMPIEZA DE CAMPOS DE TEXTO
-# ============================================================
-
-columnas_texto = [
+COLUMNAS_TEXTO_MALARIA = [
     "departamento",
     "provincia",
     "distrito",
@@ -106,448 +37,129 @@ columnas_texto = [
     "diagnostic",
     "diresa",
     "tipo_edad",
-    "sexo"
-]
-
-for columna in columnas_texto:
-
-    if columna in df.columns:
-
-        df = df.withColumn(
-            columna,
-            trim(col(columna))
-        )
-
-# ============================================================
-# 6. NORMALIZAR UBIGEO
-# ============================================================
-
-if "ubigeo" in df.columns:
-
-    df = (
-        df
-        .withColumn(
-            "ubigeo",
-            regexp_replace(
-                col("ubigeo").cast("string"),
-                r"\.0$",
-                ""
-            )
-        )
-        .withColumn(
-            "ubigeo",
-            lpad(
-                col("ubigeo"),
-                6,
-                "0"
-            )
-        )
-    )
-
-# ============================================================
-# 7. NORMALIZAR LOCALCOD
-# ============================================================
-
-if "localcod" in df.columns:
-
-    df = (
-        df
-        .withColumn(
-            "localcod",
-            regexp_replace(
-                col("localcod").cast("string"),
-                r"\.0$",
-                ""
-            )
-        )
-        .withColumn(
-            "localcod",
-            lpad(
-                col("localcod"),
-                10,
-                "0"
-            )
-        )
-    )
-
-# ============================================================
-# 8. CONVERSIÓN DE TIPOS
-# ============================================================
-
-if "ano" in df.columns:
-
-    df = df.withColumn(
-        "ano",
-        col("ano").cast("integer")
-    )
-
-if "semana" in df.columns:
-
-    df = df.withColumn(
-        "semana",
-        col("semana").cast("integer")
-    )
-
-if "edad" in df.columns:
-
-    df = df.withColumn(
-        "edad",
-        col("edad").cast("integer")
-    )
-
-for columna in [
-    "Malaria_total",
-    "B50",
-    "B51"
-]:
-
-    if columna in df.columns:
-
-        df = df.withColumn(
-            columna,
-            col(columna).cast("integer")
-        )
-
-# ============================================================
-# 9. ELIMINAR FILAS COMPLETAMENTE VACÍAS
-# ============================================================
-
-df = df.dropna(how="all")
-
-# ============================================================
-# 10. FILTRAR LA LIBERTAD
-# ============================================================
-
-print("\n========== FILTRANDO LA LIBERTAD ==========")
-
-df = df.filter(
-    upper(
-        trim(
-            col("departamento")
-        )
-    ) == "LA LIBERTAD"
-)
-
-print(
-    "Registros después de filtrar LA LIBERTAD:",
-    df.count()
-)
-
-# ============================================================
-# 11. FILTRAR PERÍODO 2015 - 2024
-# ============================================================
-
-print("\n========== FILTRANDO PERÍODO ==========")
-
-df = df.filter(
-    (col("ano") >= 2015) &
-    (col("ano") <= 2024)
-)
-
-# ============================================================
-# 12. FILTRAR SEMANAS VÁLIDAS
-# ============================================================
-
-df = df.filter(
-    (col("semana") >= 1) &
-    (col("semana") <= 53)
-)
-
-# ============================================================
-# 13. 2024 SOLO HASTA SEMANA 26
-# ============================================================
-
-df = df.filter(
-    (col("ano") < 2024) |
-    (
-        (col("ano") == 2024) &
-        (col("semana") <= 26)
-    )
-)
-
-# ============================================================
-# 13B. MATERIALIZAR EN CACHÉ
-# ============================================================
-# Sin esto, cada acción posterior (count/show) recalcula toda
-# la cadena de filtros desde el CSV original: el optimizador de
-# Spark vuelve a analizar un plan lógico cada vez más largo y el
-# tiempo de planificación crece de forma no lineal. Al cachear
-# aquí se corta esa cadena y las acciones siguientes reutilizan
-# el resultado ya filtrado.
-
-df = df.cache()
-df.count()
-
-# ============================================================
-# 14. CONTROL DEL PERÍODO
-# ============================================================
-
-print("\n========== CONTROL DEL PERÍODO ==========")
-
-print(
-    "Total de registros:",
-    df.count()
-)
-
-print(
-    "Año mínimo:",
-    df.selectExpr("min(ano)").first()[0]
-)
-
-print(
-    "Año máximo:",
-    df.selectExpr("max(ano)").first()[0]
-)
-
-print("\nDistribución por año:")
-
-(
-    df
-    .groupBy("ano")
-    .count()
-    .orderBy("ano")
-    .show(20)
-)
-
-print("\nProvincias encontradas:")
-
-(
-    df
-    .select("provincia")
-    .distinct()
-    .orderBy("provincia")
-    .show(100, truncate=False)
-)
-
-print("\nCantidad de provincias:")
-
-print(
-    df.select("provincia")
-    .distinct()
-    .count()
-)
-
-print("\nCantidad de distritos:")
-
-print(
-    df.select("distrito")
-    .distinct()
-    .count()
-)
-
-print("\nCantidad de localidades:")
-
-print(
-    df.select("localidad")
-    .distinct()
-    .count()
-)
-
-# ============================================================
-# 15. CONTROL ESPECÍFICO DE 2024
-# ============================================================
-
-print("\n========== CONTROL 2024 ==========")
-
-(
-    df
-    .filter(col("ano") == 2024)
-    .selectExpr(
-        "min(semana) as semana_minima",
-        "max(semana) as semana_maxima"
-    )
-    .show()
-)
-
-# ============================================================
-# 16. DUPLICADOS
-# ============================================================
-
-print("\n========== ELIMINANDO DUPLICADOS ==========")
-
-registros_antes = df.count()
-
-df = df.dropDuplicates()
-
-registros_despues = df.count()
-
-print(
-    "Registros antes:",
-    registros_antes
-)
-
-print(
-    "Registros después:",
-    registros_despues
-)
-
-print(
-    "Duplicados eliminados:",
-    registros_antes - registros_despues
-)
-
-# ============================================================
-# 16B. PROTECCIÓN DE DATOS SENSIBLES (EDAD Y LOCALIDAD)
-# ============================================================
-# "edad" y "localidad" son cuasi-identificadores: combinados con
-# diagnostico/semana epidemiologica permiten reidentificar a una
-# persona en localidades pequeñas con pocos casos. Se aplican dos
-# tecnicas sobre columnas derivadas (no se sobrescribe el dato
-# original en "df", solo se excluye de "df_final" mas abajo):
-#
-#   - Generalizacion: "edad" exacta -> "edad_rango" (rango de 10-15
-#     años). Reduce la granularidad del cuasi-identificador.
-#   - Seudonimizacion: "localidad" -> "localidad_hash" (SHA-256
-#     truncado a 12 caracteres). No reversible, pero es
-#     deterministico: una misma localidad siempre produce el mismo
-#     hash, lo que permite seguir agrupando/contando por localidad
-#     sin exponer su nombre real en el dataset curado.
-#
-# Riesgo residual: si una localidad tiene muy pocos casos en una
-# semana, la combinacion rango_edad + sexo + semana + diagnostico
-# puede seguir siendo unica dentro de ese hash (bajo k-anonimato).
-# El hash protege el nombre de la localidad, no la unicidad del
-# registro.
-
-if "edad" in df.columns:
-
-    df = df.withColumn(
-        "edad_rango",
-        when(col("edad") < 5, "0-4")
-        .when(col("edad") < 15, "5-14")
-        .when(col("edad") < 45, "15-44")
-        .when(col("edad") < 65, "45-64")
-        .when(col("edad").isNotNull(), "65+")
-        .otherwise("SIN_DATO")
-    )
-
-if "localidad" in df.columns:
-
-    df = df.withColumn(
-        "localidad_hash",
-        substring(
-            sha2(upper(trim(col("localidad"))), 256),
-            1,
-            12
-        )
-    )
-
-print("\n========== EVIDENCIA: ANTES Y DESPUES DE LA PROTECCION ==========")
-
-(
-    df
-    .select(
-        "localidad",
-        "localidad_hash",
-        "edad",
-        "edad_rango"
-    )
-    .show(10, truncate=False)
-)
-
-# ============================================================
-# 17. COLUMNAS FINALES
-# ============================================================
-
-columnas_finales = [
-    "departamento",
-    "provincia",
-    "distrito",
-    "localidad_hash",
-    "enfermedad",
-    "ano",
-    "semana",
-    "diagnostic",
-    "diresa",
-    "ubigeo",
-    "localcod",
-    "edad_rango",
-    "tipo_edad",
     "sexo",
-    "Malaria_total",
-    "B50",
-    "B51"
 ]
 
-columnas_existentes = [
-    c for c in columnas_finales
-    if c in df.columns
-]
 
-df_final = df.select(
-    *columnas_existentes
-)
+def transformar_datos_malaria(df: DataFrame) -> DataFrame:
+    """
+    Aplica las transformaciones de limpieza y validación sobre datos de Malaria.
 
-# ============================================================
-# 18. CONTROL FINAL
-# ============================================================
+    Args:
+        df: DataFrame de PySpark con datos crudos de Malaria.
 
-print("\n========== ESQUEMA FINAL ==========")
+    Returns:
+        DataFrame: Datos limpios y estructurados para la capa Silver.
+    """
+    # 1. Normalizar nombres de columnas
+    df = normalize_column_names(df)
 
-df_final.printSchema()
+    # 2. Trim en campos de texto
+    df = trim_text_columns(df, COLUMNAS_TEXTO_MALARIA)
 
-print("\n========== DATOS FINALES ==========")
+    # 3. Normalizar Ubigeo a 6 dígitos
+    if "ubigeo" in df.columns:
+        df = with_standardized_ubigeo(df, ubigeo_col="ubigeo", output_col="ubigeo")
 
-df_final.show(
-    10,
-    truncate=False
-)
+    # 4. Normalizar localcod a 10 dígitos (código de centro poblado)
+    if "localcod" in df.columns:
+        df = df.withColumn(
+            "localcod",
+            lpad(regexp_replace(trim(col("localcod").cast("string")), r"\.0+$", ""), 10, "0"),
+        )
 
-print("\n========== TOTAL FINAL ==========")
+    # 5. Conversión de tipos de datos
+    for c in ["ano", "semana", "edad", "Malaria_total", "B50", "B51"]:
+        if c in df.columns:
+            df = df.withColumn(c, col(c).cast(IntegerType()))
 
-print(
-    df_final.count()
-)
+    # 6. Descartar filas completamente vacías
+    df = df.dropna(how="all")
 
-# ============================================================
-# 19. GUARDAR CSV
-# ============================================================
+    # 7. Filtrar La Libertad
+    df = filter_la_libertad(df, ubigeo_col="ubigeo", dpto_col="departamento")
 
-print("\n========== GUARDANDO CSV ==========")
+    # 8. Filtrar rango temporal 2015-2024 y semanas válidas
+    df = df.filter(
+        (col("ano") >= ANIO_INICIAL) &
+        (col("ano") <= ANIO_FINAL) &
+        (col("semana") >= 1) &
+        (col("semana") <= 53)
+    )
 
-(
-    df_final
-    .write
-    .mode("overwrite")
-    .option("header", True)
-    .option("encoding", "UTF-8")
-    .option("sep", ",")
-    .csv(ruta_csv)
-)
+    # 9. Filtrar diagnósticos oficiales de Malaria (B50: P. falciparum, B51: P. vivax)
+    if "diagnostic" in df.columns:
+        df = df.filter(col("diagnostic").isin(list(DIAGNOSTICOS_MALARIA)))
 
-print("CSV guardado correctamente.")
+    # 10. Deduplicación por clave de negocio
+    clave_dedup = ["ubigeo", "ano", "semana", "localidad", "diagnostic", "sexo", "edad"]
+    cols_dedup = [c for c in clave_dedup if c in df.columns]
+    if cols_dedup:
+        df = df.dropDuplicates(cols_dedup)
+    else:
+        df = df.dropDuplicates()
 
-# ============================================================
-# 20. GUARDAR PARQUET
-# ============================================================
+    # 11. Columnas finales
+    columnas_finales = [
+        "departamento",
+        "provincia",
+        "distrito",
+        "localidad",
+        "enfermedad",
+        "ano",
+        "semana",
+        "diagnostic",
+        "diresa",
+        "ubigeo",
+        "localcod",
+        "edad",
+        "tipo_edad",
+        "sexo",
+        "Malaria_total",
+        "B50",
+        "B51",
+    ]
+    cols_presentes = [c for c in columnas_finales if c in df.columns]
+    return df.select(*cols_presentes)
 
-print("\n========== GUARDANDO PARQUET ==========")
 
-(
-    df_final
-    .write
-    .mode("overwrite")
-    .partitionBy("ano")
-    .parquet(ruta_parquet)
-)
+def procesar_silver_malaria(
+    spark: Optional[SparkSession] = None,
+    input_path: Optional[str] = None,
+    output_parquet_path: Optional[str] = None,
+    config: Optional[AppConfig] = None,
+) -> DataFrame:
+    """
+    Ejecuta el pipeline de Bronze a Silver para Malaria.
+    """
+    cfg = config or get_config()
+    active_spark = spark or get_spark_session(app_name="Limpieza_Malaria", config=cfg)
 
-print("Parquet guardado correctamente.")
+    ruta_in = input_path or f"{cfg.get_bronze_path('malaria')}/*/*.csv"
+    ruta_out = output_parquet_path or f"{cfg.get_silver_path('malaria')}/parquet"
 
-# ============================================================
-# 21. FINAL
-# ============================================================
+    logger.info("Leyendo datos crudos de Malaria desde: %s", ruta_in)
+    df_raw = (
+        active_spark.read
+        .option("header", True)
+        .option("sep", ",")
+        .option("encoding", "UTF-8")
+        .csv(ruta_in)
+    )
 
-print("\n==========================================")
-print("      LIMPIEZA MALARIA FINALIZADA")
-print("==========================================")
+    df_silver = transformar_datos_malaria(df_raw)
 
-print("CSV:")
-print(ruta_csv)
+    # Escribir Parquet particionado por 'ano'
+    write_partitioned_parquet_incremental(df_silver, ruta_out, partition_col="ano")
 
-print("\nParquet:")
-print(ruta_parquet)
+    # Actualizar estado de lotes en el gestor de control
+    control_mgr = BatchControlManager(config=cfg)
+    for b in control_mgr.get_pending_batches(source="malaria"):
+        control_mgr.update_batch_status(b.file_hash, "PROCESSED_SILVER")
 
-print("\nRegistros finales:")
-print(df_final.count())
+    logger.info("Pipeline Silver de Malaria concluido con éxito.")
+    return df_silver
 
-spark.stop()
+
+if __name__ == "__main__":
+    procesar_silver_malaria()

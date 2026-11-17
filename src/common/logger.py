@@ -1,0 +1,42 @@
+"""
+Módulo de registro y logging centralizado para el pipeline.
+Garantiza un formato unificado de trazas y logs en consola y archivo.
+"""
+
+import logging
+import os
+import sys
+from typing import Optional
+
+
+def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:
+    """
+    Obtiene o crea un logger estandarizado con formato consistente.
+
+    Args:
+        name: Nombre del componente o módulo (típicamente __name__).
+        level: Nivel de logging opcional (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+               Si no se especifica, toma la variable LOG_LEVEL o 'INFO'.
+
+    Returns:
+        logging.Logger: Instancia de logger configurada.
+    """
+    logger = logging.getLogger(name)
+
+    if not logger.handlers:
+        log_level_str = (level or os.getenv("LOG_LEVEL", "INFO")).upper()
+        log_level = getattr(logging, log_level_str, logging.INFO)
+        logger.setLevel(log_level)
+
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(log_level)
+
+        formatter = logging.Formatter(
+            fmt="%(asctime)s [%(levelname)s] [%(name)s]: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.propagate = False
+
+    return logger
