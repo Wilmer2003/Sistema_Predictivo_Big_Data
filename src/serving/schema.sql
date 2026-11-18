@@ -1,7 +1,24 @@
 -- ==============================================================================
--- SISTEMA PREDICTIVO BIG DATA - ESQUEMA RELACIONAL (POSTGRESQL / RDS)
--- Modelo dimensional optimizado para BI (Power BI) y consultas analíticas
+-- SISTEMA PREDICTIVO BIG DATA - ESQUEMA RELACIONAL (GOOGLE CLOUD SQL / LOCAL)
+-- Modelo dimensional optimizado para BI (Power BI), predicciones y control de lotes
 -- ==============================================================================
+
+-- 0. Tabla de Control de Lotes (Auditoría e Idempotencia en Cloud SQL)
+CREATE TABLE IF NOT EXISTS lotes (
+    batch_id VARCHAR(100) PRIMARY KEY,
+    source VARCHAR(50) NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_hash VARCHAR(64) NOT NULL UNIQUE,
+    file_size_bytes BIGINT NOT NULL,
+    load_date DATE NOT NULL,
+    ingest_timestamp TIMESTAMP NOT NULL,
+    destination_path TEXT NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_lotes_file_hash ON lotes (file_hash);
+CREATE INDEX IF NOT EXISTS idx_lotes_source_status ON lotes (source, status);
 
 -- 1. Dimensión Geográfica (Ubigeo)
 CREATE TABLE IF NOT EXISTS dim_ubigeo (

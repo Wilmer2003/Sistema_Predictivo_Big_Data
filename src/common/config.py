@@ -1,5 +1,5 @@
 """
-Módulo de Configuración Centralizada (Local y Cloud).
+Módulo de Configuración Centralizada (Local y Google Cloud Platform).
 Lee variables desde entorno o archivo .env y expone rutas, credenciales
 y constantes de dominio para todas las capas del pipeline Medallion.
 """
@@ -54,12 +54,12 @@ VARIABLES_CLIMA = (
 
 @dataclass(frozen=True)
 class PostgresConfig:
-    """Configuración de conexión para PostgreSQL / AWS RDS."""
+    """Configuración de conexión para PostgreSQL / Cloud SQL para PostgreSQL."""
     host: str = field(default_factory=lambda: os.getenv("POSTGRES_HOST", "localhost"))
     port: int = field(default_factory=lambda: int(os.getenv("POSTGRES_PORT", "5432")))
     db: str = field(default_factory=lambda: os.getenv("POSTGRES_DB", "epidemiologia_db"))
     user: str = field(default_factory=lambda: os.getenv("POSTGRES_USER", "postgres"))
-    password: str = field(default_factory=lambda: os.getenv("POSTGRES_PASSWORD", "postgres"))
+    password: str = field(default_factory=lambda: os.getenv("POSTGRES_PASSWORD", ""))
     schema: str = field(default_factory=lambda: os.getenv("POSTGRES_SCHEMA", "public"))
 
     @property
@@ -79,7 +79,7 @@ class PostgresConfig:
 
 @dataclass(frozen=True)
 class SparkSettings:
-    """Parámetros de configuración de PySpark."""
+    """Parámetros de configuración de PySpark (compatible con Dataproc 2.2 / Spark 3.5.3)."""
     app_name: str = field(default_factory=lambda: os.getenv("SPARK_APP_NAME", "Sistema_Predictivo_La_Libertad"))
     master: str = field(default_factory=lambda: os.getenv("SPARK_MASTER", "local[*]"))
     driver_memory: str = field(default_factory=lambda: os.getenv("SPARK_DRIVER_MEMORY", "4g"))
@@ -92,23 +92,23 @@ class SparkSettings:
 class AppConfig:
     """
     Gestor central de rutas y configuraciones del pipeline.
-    Soporta ejecución local (filesystem) y nube (Amazon S3 con protocolo s3a://).
+    Soporta ejecución local (filesystem) y Google Cloud Platform (GCS gs:// + Dataproc + Cloud SQL).
     """
     env: str = field(default_factory=lambda: os.getenv("PIPELINE_ENV", "local").lower())
-    s3_bucket: str = field(default_factory=lambda: os.getenv("S3_BUCKET", ""))
-    aws_region: str = field(default_factory=lambda: os.getenv("AWS_REGION", "us-east-1"))
-    aws_access_key: Optional[str] = field(default_factory=lambda: os.getenv("AWS_ACCESS_KEY_ID"))
-    aws_secret_key: Optional[str] = field(default_factory=lambda: os.getenv("AWS_SECRET_ACCESS_KEY"))
-    s3_endpoint: Optional[str] = field(default_factory=lambda: os.getenv("S3_ENDPOINT"))
+    gcs_bucket: str = field(default_factory=lambda: os.getenv("GCS_BUCKET", ""))
+    gcp_project_id: str = field(default_factory=lambda: os.getenv("GCP_PROJECT_ID", ""))
+    gcp_region: str = field(default_factory=lambda: os.getenv("GCP_REGION", "us-central1"))
+    dataproc_cluster_name: str = field(default_factory=lambda: os.getenv("DATAPROC_CLUSTER_NAME", "cluster-dataproc-predictivo"))
+    google_application_credentials: Optional[str] = field(default_factory=lambda: os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
     data_dir_override: Optional[str] = field(default_factory=lambda: os.getenv("DATA_DIR"))
 
     postgres: PostgresConfig = field(default_factory=PostgresConfig)
     spark: SparkSettings = field(default_factory=SparkSettings)
 
     @property
-    def is_aws(self) -> bool:
-        """Indica si el pipeline se ejecuta contra AWS S3."""
-        return self.env == "aws"
+    def is_gcp(self) -> bool:
+        """Indica si el pipeline se ejecuta contra Google Cloud (GCS + Dataproc + Cloud SQL)."""
+        return self.env == "gcp"
 
     @property
     def root_dir(self) -> Path:
@@ -121,38 +121,45 @@ class AppConfig:
     @property
     def raw_base_path(self) -> str:
         """Ruta base para la capa Bronze."""
-        if self.is_aws:
-            if not self.s3_bucket:
-                raise ValueError("S3_BUCKET debe estar configurado cuando PIPELINE_ENV='aws'")
-            return f"s3a://{self.s3_bucket}/bronze"
+        if self.is_gcp:
+            if not self.gcs_bucket:
+                raise ValueError("GCS_BUCKET debe estar configurado cuando PIPELINE_ENV='gcp'")
+            return f"gs://{self.gcs_bucket}/bronze"
         base = Path(self.data_dir_override) if self.data_dir_override else self.root_dir / "data"
         return str((base / "raw").resolve()).replace("\\", "/")
 
     @property
     def processed_base_path(self) -> str:
         """Ruta base para la capa Silver."""
-        if self.is_aws:
-            if not self.s3_bucket:
-                raise ValueError("S3_BUCKET debe estar configurado cuando PIPELINE_ENV='aws'")
-            return f"s3a://{self.s3_bucket}/silver"
+        if self.is_gcp:
+            if not self.gcs_bucket:
+                raise ValueError("GCS_BUCKET debe estar configurado cuando PIPELINE_ENV='gcp'")
+            return f"gs://{self.gcs_bucket}/silver"
         base = Path(self.data_dir_override) if self.data_dir_override else self.root_dir / "data"
         return str((base / "processed").resolve()).replace("\\", "/")
 
     @property
     def curated_base_path(self) -> str:
         """Ruta base para la capa Gold."""
-        if self.is_aws:
-            if not self.s3_bucket:
-                raise ValueError("S3_BUCKET debe estar configurado cuando PIPELINE_ENV='aws'")
-            return f"s3a://{self.s3_bucket}/gold"
+        if self.is_gcp:
+            if not self.gcs_bucket:
+                raise ValueError("GCS_BUCKET debe estar configurado cuando PIPELINE_ENV='gcp'")
+            return f"gs://{self.gcs_bucket}/gold"
         base = Path(self.data_dir_override) if self.data_dir_override else self.root_dir / "data"
         return str((base / "curated").resolve()).replace("\\", "/")
 
     @property
+    def models_base_path(self) -> str:
+        """Ruta base para modelos MLlib."""
+        if self.is_gcp:
+            if not self.gcs_bucket:
+                raise ValueError("GCS_BUCKET debe estar configurado cuando PIPELINE_ENV='gcp'")
+            return f"gs://{self.gcs_bucket}/modelos"
+        return str((self.root_dir / "results" / "modelos").resolve()).replace("\\", "/")
+
+    @property
     def batch_control_path(self) -> str:
-        """Ruta del registro de control de lotes procesados (JSON)."""
-        if self.is_aws:
-            return f"s3a://{self.s3_bucket}/control/batch_control.json"
+        """Ruta del registro de control de lotes local (en GCP el estado va en la tabla 'lotes' de Cloud SQL)."""
         base = Path(self.data_dir_override) if self.data_dir_override else self.root_dir / "data"
         control_dir = base / "control"
         control_dir.mkdir(parents=True, exist_ok=True)
@@ -174,6 +181,10 @@ class AppConfig:
     def get_gold_path(self, dataset_name: str = "epidemiologia_clima") -> str:
         """Retorna la ruta Gold para el dataset integrado de analítica/features."""
         return f"{self.curated_base_path}/{dataset_name}"
+
+    def get_model_path(self, model_name: str = "rf_ira_model") -> str:
+        """Retorna la ruta del modelo MLlib (en GCS gs:// o local results/modelos/)."""
+        return f"{self.models_base_path}/{model_name}"
 
 
 # Instancia singleton predeterminada

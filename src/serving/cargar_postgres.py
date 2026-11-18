@@ -1,5 +1,5 @@
 """
-Módulo de Serving y Carga a PostgreSQL / AWS RDS.
+Módulo de Serving y Carga a Cloud SQL para PostgreSQL / Local.
 Ejecuta el script DDL (schema.sql) y copia las tablas Gold (dim_ubigeo, dim_tiempo,
 fact_vigilancia_clima y predicciones) hacia la base de datos relacional para Power BI.
 """
@@ -184,7 +184,7 @@ def cargar_capa_gold_a_postgres(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Módulo de Serving hacia PostgreSQL / AWS RDS.")
+    parser = argparse.ArgumentParser(description="Módulo de Serving hacia Cloud SQL para PostgreSQL / Local.")
     parser.add_argument("--test", action="store_true", help="Probar conectividad con PostgreSQL.")
     parser.add_argument("--crear-tablas", action="store_true", help="Ejecutar schema.sql para crear tablas.")
     parser.add_argument("--cargar", action="store_true", help="Cargar tablas Gold a PostgreSQL.")

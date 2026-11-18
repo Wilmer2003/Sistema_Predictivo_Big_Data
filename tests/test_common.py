@@ -26,49 +26,55 @@ from src.common.geo_utils import (
 
 
 # ==============================================================================
-# 1. PRUEBAS DE CONFIGURACIÓN Y RUTAS (Local vs AWS)
+# 1. PRUEBAS DE CONFIGURACIÓN Y RUTAS (Local vs Google Cloud)
 # ==============================================================================
 class TestConfig(unittest.TestCase):
     def test_local_default_paths(self):
         """Verifica que las rutas en entorno local apunten a data/raw, data/processed y data/curated."""
-        cfg = AppConfig(env="local", s3_bucket="")
-        self.assertFalse(cfg.is_aws)
+        cfg = AppConfig(env="local", gcs_bucket="")
+        self.assertFalse(cfg.is_gcp)
         self.assertTrue(cfg.raw_base_path.endswith("/data/raw"))
         self.assertTrue(cfg.processed_base_path.endswith("/data/processed"))
         self.assertTrue(cfg.curated_base_path.endswith("/data/curated"))
         self.assertTrue(cfg.get_bronze_path("ira").endswith("/data/raw/ira"))
         self.assertTrue(cfg.get_silver_path("malaria").endswith("/data/processed/malaria"))
         self.assertTrue(cfg.get_gold_path("epidemiologia_clima").endswith("/data/curated/epidemiologia_clima"))
+        self.assertTrue(cfg.get_model_path("rf_ira_model").endswith("/results/modelos/rf_ira_model"))
 
-    def test_aws_s3_paths(self):
-        """Verifica que en entorno AWS las rutas se construyan con el prefijo s3a://."""
-        cfg = AppConfig(env="aws", s3_bucket="mi-bucket-analitica")
-        self.assertTrue(cfg.is_aws)
-        self.assertEqual(cfg.raw_base_path, "s3a://mi-bucket-analitica/bronze")
-        self.assertEqual(cfg.processed_base_path, "s3a://mi-bucket-analitica/silver")
-        self.assertEqual(cfg.curated_base_path, "s3a://mi-bucket-analitica/gold")
-        self.assertEqual(cfg.get_bronze_path("senamhi"), "s3a://mi-bucket-analitica/bronze/senamhi")
-        self.assertEqual(cfg.get_silver_path("ira"), "s3a://mi-bucket-analitica/silver/ira")
-        self.assertEqual(cfg.get_gold_path(), "s3a://mi-bucket-analitica/gold/epidemiologia_clima")
-        self.assertEqual(cfg.batch_control_path, "s3a://mi-bucket-analitica/control/batch_control.json")
+    def test_gcp_gcs_paths(self):
+        """Verifica que en entorno Google Cloud las rutas se construyan con el prefijo gs://."""
+        cfg = AppConfig(
+            env="gcp",
+            gcs_bucket="mi-bucket-analitica",
+            gcp_project_id="sistema-predictivo-upao",
+        )
+        self.assertTrue(cfg.is_gcp)
+        self.assertEqual(cfg.raw_base_path, "gs://mi-bucket-analitica/bronze")
+        self.assertEqual(cfg.processed_base_path, "gs://mi-bucket-analitica/silver")
+        self.assertEqual(cfg.curated_base_path, "gs://mi-bucket-analitica/gold")
+        self.assertEqual(cfg.models_base_path, "gs://mi-bucket-analitica/modelos")
+        self.assertEqual(cfg.get_bronze_path("senamhi"), "gs://mi-bucket-analitica/bronze/senamhi")
+        self.assertEqual(cfg.get_silver_path("ira"), "gs://mi-bucket-analitica/silver/ira")
+        self.assertEqual(cfg.get_gold_path(), "gs://mi-bucket-analitica/gold/epidemiologia_clima")
+        self.assertEqual(cfg.get_model_path("rf_ira_model"), "gs://mi-bucket-analitica/modelos/rf_ira_model")
 
-    def test_aws_missing_bucket_raises_error(self):
-        """Valida que levantar rutas AWS sin S3_BUCKET genere un ValueError explícito."""
-        cfg = AppConfig(env="aws", s3_bucket="")
+    def test_gcp_missing_bucket_raises_error(self):
+        """Valida que levantar rutas GCP sin GCS_BUCKET genere un ValueError explícito."""
+        cfg = AppConfig(env="gcp", gcs_bucket="")
         with self.assertRaises(ValueError):
             _ = cfg.raw_base_path
 
     def test_postgres_jdbc_url(self):
-        """Verifica la generación de la URL JDBC y propiedades de PostgreSQL."""
+        """Verifica la generación de la URL JDBC y propiedades de Cloud SQL / PostgreSQL."""
         pg = PostgresConfig(
-            host="rds.amazon.com",
+            host="10.0.0.5",
             port=5432,
             db="testdb",
-            user="user1",
+            user="postgres",
             password="pwd",
         )
-        self.assertEqual(pg.jdbc_url, "jdbc:postgresql://rds.amazon.com:5432/testdb")
-        self.assertEqual(pg.connection_properties["user"], "user1")
+        self.assertEqual(pg.jdbc_url, "jdbc:postgresql://10.0.0.5:5432/testdb")
+        self.assertEqual(pg.connection_properties["user"], "postgres")
         self.assertEqual(pg.connection_properties["driver"], "org.postgresql.Driver")
 
 

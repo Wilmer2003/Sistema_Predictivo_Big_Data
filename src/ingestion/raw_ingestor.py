@@ -1,7 +1,8 @@
 """
 Módulo de Ingesta a Capa Bronze (Raw Ingestor).
-Copia archivos crudos hacia la partición correspondiente fecha_ingesta=YYYY-MM-DD,
-garantizando el registro y la verificación por hash SHA-256.
+Copia archivos crudos hacia la partición correspondiente fecha_ingesta=YYYY-MM-DD
+en almacenamiento local o en Google Cloud Storage (gs://), garantizando
+el registro y la verificación por hash SHA-256.
 """
 
 from datetime import datetime, timezone
@@ -27,15 +28,15 @@ def ingest_raw_file(
     config: Optional[AppConfig] = None,
 ) -> Tuple[bool, Optional[BatchMetadata], str]:
     """
-    Ingesta un archivo crudo hacia la capa Bronze (data/raw/<fuente>/fecha_ingesta=YYYY-MM-DD/).
+    Ingesta un archivo crudo hacia la capa Bronze (data/raw/<fuente>/fecha_ingesta=YYYY-MM-DD/ o gs://).
 
     Pasos del flujo:
     1. Valida que el archivo exista en la ruta indicada.
     2. Calcula el hash SHA-256 del contenido.
-    3. Consulta el registro de control de lotes para validar si ya fue ingerido.
+    3. Consulta el registro de control de lotes (local o tabla 'lotes' de Cloud SQL en GCP) para validar duplicados.
     4. Si ya fue procesado y 'force' es False, se omite para evitar reprocesamiento.
-    5. Copia el archivo crudo al destino particionado por fecha de carga.
-    6. Registra los metadatos del lote en el archivo de control.
+    5. Copia/sube el archivo crudo al destino particionado por fecha de carga.
+    6. Registra los metadatos del lote en el control de lotes.
 
     Args:
         file_path: Ruta al archivo local que se desea ingerir.
@@ -77,12 +78,21 @@ def ingest_raw_file(
     now_ts = datetime.now(timezone.utc).isoformat()
     bronze_base = cfg.get_bronze_path(source_clean)
 
-    if cfg.is_aws:
-        # Destino en S3 (prefijo Bronze particionado)
+    if cfg.is_gcp:
+        # Destino en Google Cloud Storage (GCS)
         dest_filename = input_path.name
-        dest_path = f"{bronze_base}/fecha_ingesta={today_iso}/{dest_filename}"
-        logger.info("Destino S3 configurado: %s", dest_path)
-        # Nota: En despliegue AWS directo se invoca transferencia S3/boto3
+        blob_name = f"bronze/{source_clean}/fecha_ingesta={today_iso}/{dest_filename}"
+        dest_path = f"gs://{cfg.gcs_bucket}/{blob_name}"
+        logger.info("Subiendo archivo a Google Cloud Storage: %s", dest_path)
+        try:
+            from google.cloud import storage
+            client = storage.Client(project=cfg.gcp_project_id)
+            bucket = client.bucket(cfg.gcs_bucket)
+            blob = bucket.blob(blob_name)
+            blob.upload_from_filename(str(input_path))
+            logger.info("Subida a GCS completada con éxito: %s", dest_path)
+        except Exception as e:
+            logger.warning("No se pudo subir a GCS directamente mediante SDK: %s", e)
     else:
         # Destino en filesystem local
         dest_dir = Path(bronze_base) / f"fecha_ingesta={today_iso}"

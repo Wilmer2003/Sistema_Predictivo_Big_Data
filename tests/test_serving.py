@@ -1,7 +1,7 @@
 """
 Pruebas Unitarias para el Módulo de Serving (src/serving/).
 Valida la sintaxis e integridad del esquema DDL (schema.sql), configuración JDBC
-y manejo robusto de excepciones de conectividad.
+y manejo robusto de excepciones de conectividad para Cloud SQL / PostgreSQL.
 """
 
 from pathlib import Path
@@ -13,12 +13,16 @@ from src.serving.cargar_postgres import probar_conexion_postgres
 
 class TestServing(unittest.TestCase):
     def test_schema_sql_file_exists_and_valid(self):
-        """Verifica que el archivo schema.sql exista y contenga las tablas del modelo dimensional."""
+        """Verifica que el archivo schema.sql contenga las tablas del modelo dimensional y la tabla lotes."""
         schema_path = Path(__file__).resolve().parent.parent / "src" / "serving" / "schema.sql"
         self.assertTrue(schema_path.is_file(), f"No se encontró {schema_path}")
 
         with open(schema_path, "r", encoding="utf-8") as f:
             ddl_content = f.read().upper()
+
+        # Validar existencia de la tabla de auditoría de lotes de Cloud SQL
+        self.assertIn("CREATE TABLE IF NOT EXISTS LOTES", ddl_content)
+        self.assertIn("CREATE INDEX IF NOT EXISTS IDX_LOTES_FILE_HASH", ddl_content)
 
         # Validar existencia de las tablas del esquema en estrella
         self.assertIn("CREATE TABLE IF NOT EXISTS DIM_UBIGEO", ddl_content)
@@ -35,16 +39,16 @@ class TestServing(unittest.TestCase):
         self.assertIn("CREATE INDEX IF NOT EXISTS IDX_FACT_TIEMPO", ddl_content)
 
     def test_postgres_config_and_jdbc_properties(self):
-        """Verifica la construcción de la URL JDBC y propiedades para Spark."""
+        """Verifica la construcción de la URL JDBC y propiedades para Spark / Cloud SQL."""
         pg = PostgresConfig(
-            host="localhost",
+            host="10.10.0.5",
             port=5432,
-            db="test_epidemiologia",
-            user="user_test",
+            db="epidemiologia_db",
+            user="postgres",
             password="pwd_test",
         )
-        self.assertEqual(pg.jdbc_url, "jdbc:postgresql://localhost:5432/test_epidemiologia")
-        self.assertEqual(pg.connection_properties["user"], "user_test")
+        self.assertEqual(pg.jdbc_url, "jdbc:postgresql://10.10.0.5:5432/epidemiologia_db")
+        self.assertEqual(pg.connection_properties["user"], "postgres")
         self.assertEqual(pg.connection_properties["password"], "pwd_test")
         self.assertEqual(pg.connection_properties["driver"], "org.postgresql.Driver")
 
@@ -53,7 +57,6 @@ class TestServing(unittest.TestCase):
         cfg = AppConfig(
             postgres=PostgresConfig(host="192.0.2.1", port=5432)  # IP no enrutable (TEST-NET-1)
         )
-        # Debe capturar el error y retornar False limpiamente
         resultado = probar_conexion_postgres(cfg)
         self.assertFalse(resultado)
 

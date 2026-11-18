@@ -32,15 +32,15 @@ El periodo común de análisis es **2015 – 30/06/2024** y la unidad de integra
 
 ## 3. Arquitectura Medallion
 
-Arquitectura de datos sobre Apache Spark (PySpark 3.5.1), compatible tanto en almacenamiento local como en Amazon Web Services (AWS S3 vía conector S3A):
+Arquitectura de datos sobre Apache Spark (PySpark 3.5.3), compatible tanto en almacenamiento local como en Google Cloud Platform (Cloud Storage vía conector GCS `gs://` y clúster Dataproc 2.2 en YARN):
 
-| Capa | Carpeta local | Prefijo en S3 | Contenido y Transformaciones |
+| Capa | Carpeta local | Prefijo en Cloud Storage (GCS) | Contenido y Transformaciones |
 |---|---|---|---|
-| **Bronze** | `data/raw/` | `bronze/` | Lotes CSV crudos sin alterar, particionados por `fecha_ingesta=YYYY-MM-DD` con verificación de hash criptográfico SHA-256 para evitar reprocesamientos. |
-| **Silver** | `data/processed/` | `silver/` | Datos limpios, tipados estrictos en PySpark, filtrados para La Libertad (13), deduplicados por clave de negocio y guardados en **Parquet particionado por Año** (escritura dinámica de particiones). |
-| **Gold** | `data/curated/` | `gold/` | Esquema dimensional (`dim_ubigeo`, `dim_tiempo`, `fact_vigilancia_clima`) y dataset analítico con **variables rezagadas (lags de 1 a 3 semanas)**, deltas y medias móviles. |
-| **Modelado** | `results/modelos/` | `models/` | Pipeline de PySpark MLlib (Random Forest / GBT / Regresión Lineal) evaluado frente a un **baseline de persistencia** ($y_t = y_{t-1}$) con métricas RMSE, MAE y $R^2$. |
-| **Serving** | `src/serving/` | `RDS` | Script DDL relacional y cargador JDBC hacia PostgreSQL / AWS RDS para tableros analíticos. |
+| **Bronze** | `data/raw/` | `gs://<bucket>/bronze/` | Lotes CSV crudos sin alterar, particionados por `fecha_ingesta=YYYY-MM-DD` con verificación de hash criptográfico SHA-256 (en tabla `lotes` de Cloud SQL o archivo local). |
+| **Silver** | `data/processed/` | `gs://<bucket>/silver/` | Datos limpios, tipados estrictos en PySpark, filtrados para La Libertad (13), deduplicados por clave de negocio y guardados en **Parquet particionado por Año** (escritura dinámica de particiones). |
+| **Gold** | `data/curated/` | `gs://<bucket>/gold/` | Esquema dimensional (`dim_ubigeo`, `dim_tiempo`, `fact_vigilancia_clima`) y dataset analítico con **variables rezagadas (lags de 1 a 3 semanas)**, deltas y medias móviles. |
+| **Modelado** | `results/modelos/` | `gs://<bucket>/modelos/` | Pipeline de PySpark MLlib (Random Forest / GBT / Regresión Lineal) evaluado frente a un **baseline de persistencia** ($y_t = y_{t-1}$) con métricas RMSE, MAE y $R^2$. |
+| **Serving** | `src/serving/` | `Cloud SQL (PostgreSQL)` | Script DDL relacional y cargador JDBC hacia Cloud SQL para PostgreSQL para tableros analíticos y tabla de auditoría `lotes`. |
 
 ---
 
@@ -53,21 +53,21 @@ Sistema_Predictivo_Big_Data/
 ├── requirements.txt
 ├── .env.example
 ├── .github/                 # CI con GitHub Actions, plantilla de PR e issues
-├── data/                    # Almacenamiento Medallion (ignorado por git)
+├── data/                    # Almacenamiento Medallion local (ignorado por git)
 │   ├── raw/                 # Bronze: ira/ malaria/ senamhi/ (particionado por fecha_ingesta)
 │   ├── processed/           # Silver: ira/ malaria/ senamhi/ (Parquet particionado por Ano)
 │   ├── curated/             # Gold: epidemiologia_clima/ (dim_ubigeo, dim_tiempo, fact_vigilancia, features_ml)
-│   └── control/             # batch_control.json (auditoría de lotes por SHA-256)
+│   └── control/             # batch_control.json (auditoría local de lotes por SHA-256)
 ├── src/
-│   ├── common/              # Configuración local/AWS (.env), sesión Spark 3.5.1, geo_utils, epi_utils y logger
-│   ├── ingestion/           # BatchControlManager, cálculo SHA-256 e ingesta cruda a Bronze
+│   ├── common/              # Configuración local/GCP (.env), sesión Spark 3.5.3, geo_utils, epi_utils y logger
+│   ├── ingestion/           # BatchControlManager (JSON local o tabla lotes Cloud SQL), SHA-256 e ingesta cruda a Bronze
 │   ├── preprocessing/       # Limpieza en PySpark, filtro La Libertad (13), bandeo de celda pequeña y Parquet Silver
 │   ├── integration/         # Agregación semanal, lags temporales 1-3 semanas y modelo dimensional Gold
 │   ├── modeling/            # Pipeline MLlib, evaluación frente a persistencia, entrenamiento e inferencia
-│   ├── serving/             # schema.sql DDL y cargador a PostgreSQL / AWS RDS
-│   ├── orchestration/       # run_pipeline.py (orquestador maestro end-to-end)
+│   ├── serving/             # schema.sql DDL (tablas Gold + lotes) y cargador JDBC a Cloud SQL PostgreSQL
+│   ├── orchestration/       # run_pipeline.py (orquestador maestro local y Dataproc)
 │   └── mapreduce/           # Scripts de referencia académica inicial
-├── powerbi/                 # Guía de conexión e integración de tableros (.pbit)
+├── powerbi/                 # Guía de conexión e integración de tableros (.pbit) con Cloud SQL PostgreSQL
 ├── notebooks/               # Exploración interactiva de datos y gráficos
 ├── docs/                    # Diccionario de datos, arquitectura y evidencias
 ├── tests/                   # Suite de pruebas unitarias ejecutables con pytest o unittest
@@ -206,41 +206,66 @@ python -m src.orchestration.run_pipeline --force
 ## 6. Dónde Consultar y Visualizar los Resultados
 
 1. **Auditoría e Idempotencia:**
-   * Abre `data/control/batch_control.json` para ver el historial de lotes procesados con sus hashes SHA-256, tamaños y marcas de tiempo.
+   * **Modo Local:** Abre `data/control/batch_control.json` para ver el historial de lotes procesados con sus hashes SHA-256.
+   * **Modo GCP:** Consulta la tabla `lotes` en Cloud SQL para PostgreSQL para auditoría centralizada.
 2. **Datasets en Parquet:**
-   * Capa Silver: `data/processed/`
-   * Capa Gold: `data/curated/epidemiologia_clima/`
+   * Capa Silver: `data/processed/` (o `gs://<bucket>/silver/`)
+   * Capa Gold: `data/curated/epidemiologia_clima/` (o `gs://<bucket>/gold/`)
 3. **Métricas de Evaluación de Machine Learning:**
    * Abre `results/estadisticas/metricas_evaluacion.json` para consultar los valores exactos de RMSE, MAE y $R^2$ del modelo frente al baseline de persistencia.
 4. **Modelos Persistidos:**
-   * Consulta `results/modelos/rf_ira_model/` para ver el pipeline serializado de Spark MLlib listo para producción.
+   * Consulta `results/modelos/rf_ira_model/` (o `gs://<bucket>/modelos/rf_ira_model/`) para ver el pipeline serializado de Spark MLlib listo para producción.
 5. **Visualización en Power BI Desktop:**
    * Abre **Power BI Desktop**.
-   * Conéctate a PostgreSQL (`localhost:5432/epidemiologia_db`) o directamente a los archivos Parquet en `data/curated/epidemiologia_clima/`.
-   * Consulta [`powerbi/README.md`](powerbi/README.md) para revisar las relaciones del esquema en estrella y los gráficos recomendados.
+   * Conéctate directamente a Cloud SQL para PostgreSQL (puerto `5432` con redes autorizadas configuradas) o a PostgreSQL local.
+   * Consulta [`powerbi/README.md`](powerbi/README.md) para revisar las 3 páginas del dashboard (Vigilancia, Estado del Pipeline con tabla `lotes` y Predicciones ML).
 
 ---
 
-## 7. Despliegue en la Nube (AWS Cloud)
+## 7. Despliegue en la Nube (Google Cloud Platform - GCP)
 
-El código soporta de forma nativa la ejecución en AWS sin alterar la lógica de negocio. Para desplegar en la nube:
-1. En tu archivo `.env`, cambia `PIPELINE_ENV=aws`.
-2. Especifica `S3_BUCKET=tu-nombre-de-bucket` y tus credenciales o rol IAM (`AWS_REGION=us-east-1`).
-3. El pipeline reemplazará automáticamente los directorios locales por prefijos de S3 (`s3a://<bucket>/bronze/`, `s3a://<bucket>/silver/`, `s3a://<bucket>/gold/`), ejecutando Spark sobre un clúster **AWS EMR (YARN)** y sirviendo las tablas analíticas en **Amazon RDS PostgreSQL**.
+El código soporta de forma nativa la ejecución en Google Cloud Platform sin alterar la lógica de negocio. Para desplegar en la nube según el diagrama de arquitectura:
+
+1. **Configuración de Variables:** En tu archivo `.env`, configura:
+   ```bash
+   PIPELINE_ENV=gcp
+   GCP_PROJECT_ID=tu-proyecto-gcp
+   GCP_REGION=us-central1
+   GCS_BUCKET=tu-bucket-gcs
+   DATAPROC_CLUSTER_NAME=cluster-epidemiologia
+   GOOGLE_APPLICATION_CREDENTIALS=/ruta/a/service-account-key.json
+   POSTGRES_HOST=10.x.x.x  # IP pública o privada de Cloud SQL
+   POSTGRES_PORT=5432
+   POSTGRES_DB=epidemiologia_db
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=tu_password
+   ```
+2. **Almacenamiento en Cloud Storage:**
+   El pipeline redirige automáticamente las rutas a `gs://<bucket>/bronze/`, `gs://<bucket>/silver/`, `gs://<bucket>/gold/` y `gs://<bucket>/modelos/`.
+3. **Auditoría en Cloud SQL:**
+   En modo `gcp`, la verificación de hash SHA-256 e idempotencia de lotes se persiste en la tabla `lotes` de Cloud SQL para PostgreSQL.
+4. **Ejecución en Clúster Dataproc:**
+   El pipeline se ejecuta sobre un clúster Dataproc con Spark 3.5.3 (imagen 2.2) gestionado por YARN:
+   ```bash
+   # Lanzar pipeline completo submitting PySpark jobs a Dataproc
+   python -m src.orchestration.run_pipeline --dataproc
+   ```
+5. **Consumo en Power BI:**
+   Power BI Desktop se conecta a Cloud SQL para PostgreSQL por el puerto 5432 mediante DirectQuery o Import para visualizar los datos consolidados y el estado de los lotes.
 
 ---
 
 ## 8. Estado del Proyecto
 
 - [x] Selección de datasets, periodo común (2015-2024) y clave de integración (Ubigeo + Año + Semana Epidemiológica)
-- [x] Esqueleto común, logging, sesión Spark 3.5.1 y configuración por entorno (`src/common/`)
-- [x] Ingesta incremental Bronze con verificación de hash SHA-256 (`src/ingestion/`)
+- [x] Esqueleto común, logging, sesión Spark 3.5.3 y configuración por entorno (`src/common/`)
+- [x] Ingesta incremental Bronze con verificación de hash SHA-256 (en local y tabla `lotes` de Cloud SQL) (`src/ingestion/`)
 - [x] Limpieza Silver incremental particionada por año en Parquet (`src/preprocessing/`)
 - [x] Integración Gold, feature engineering con lags 1-3 semanas y modelo dimensional (`src/integration/`)
 - [x] Modelado predictivo con Spark MLlib y evaluación frente al baseline de persistencia (`src/modeling/`)
-- [x] Esquema DDL y Serving hacia PostgreSQL / AWS RDS (`src/serving/`)
-- [x] Orquestador maestro de inicio a fin (`src/orchestration/run_pipeline.py`)
-- [x] Guía de conexión para dashboards en Power BI (`powerbi/README.md`)
+- [x] Esquema DDL y Serving hacia Cloud SQL para PostgreSQL (`src/serving/`)
+- [x] Orquestador maestro de inicio a fin con soporte Dataproc (`src/orchestration/run_pipeline.py`)
+- [x] Guía de conexión para dashboards en Power BI conectados a Cloud SQL (`powerbi/README.md`)
 - [x] Suite completa de pruebas unitarias automatizadas (`tests/`)
 
 ---
@@ -251,7 +276,7 @@ Proyecto del Programa de Estudio de Ingeniería de Computación y Sistemas (UPAO
 
 | Integrante | Frente |
 |---|---|
-| Silva López, Wilmer | Coordinación, AWS (Etapa 0) y orquestación |
+| Silva López, Wilmer | Coordinación, Google Cloud (Etapa 0) y orquestación |
 | Caipo Trujillo, Sonia | Ingeniería de datos: Bronze y Silver |
 | Principe Huamanchumo, Luis | Análisis y modelado: Gold y MLlib |
 | Sandoval Vargas, Robert | Calidad, documentación, PostgreSQL y Power BI |

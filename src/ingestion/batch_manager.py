@@ -1,7 +1,7 @@
 """
 Módulo de Gestión y Control de Lotes (Batch Control).
-Garantiza la idempotencia del pipeline mediante verificación de hash SHA-256,
-evitando el reprocesamiento de archivos duplicados o ya ingeridos.
+Garantiza la idempotencia del pipeline mediante verificación de hash SHA-256.
+En modo local persiste en JSON; en modo GCP persiste en la tabla 'lotes' de Cloud SQL.
 """
 
 from dataclasses import dataclass, asdict
@@ -71,6 +71,7 @@ class BatchControlManager:
     Administrador del registro de control de lotes.
     Permite verificar la existencia previa de un hash SHA-256 y persistir
     el estado del procesamiento de cada archivo ingerido.
+    Soporta almacenamiento en archivo local JSON o en tabla 'lotes' de Cloud SQL PostgreSQL.
     """
 
     def __init__(self, config: Optional[AppConfig] = None):
@@ -79,37 +80,69 @@ class BatchControlManager:
         self._ensure_control_storage()
 
     def _ensure_control_storage(self) -> None:
-        """Asegura que el directorio y archivo de control existan si es local."""
-        if not self.config.is_aws:
+        """Asegura que el directorio y archivo de control existan si es local, o la tabla si es GCP."""
+        if not self.config.is_gcp:
             p = Path(self.control_file_path)
             p.parent.mkdir(parents=True, exist_ok=True)
             if not p.exists():
                 with open(p, "w", encoding="utf-8") as f:
                     json.dump({"batches": []}, f, indent=2)
+        else:
+            self._ensure_cloud_sql_table()
 
-    def _load_registry(self) -> Dict[str, Any]:
-        """Lee el registro completo de lotes desde almacenamiento."""
-        if self.config.is_aws:
-            # En AWS S3, se puede implementar lectura vía S3 o fallback local
-            # Por seguridad y consistencia local-cloud básica se soporta lectura de archivo
-            if os.path.exists(self.control_file_path):
-                with open(self.control_file_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            return {"batches": []}
+    def _get_db_connection(self):
+        """Retorna una conexión a Cloud SQL / PostgreSQL."""
+        import psycopg2
+        pg = self.config.postgres
+        return psycopg2.connect(
+            host=pg.host,
+            port=pg.port,
+            dbname=pg.db,
+            user=pg.user,
+            password=pg.password,
+            connect_timeout=3,
+        )
 
+    def _ensure_cloud_sql_table(self) -> None:
+        """Crea la tabla 'lotes' en Cloud SQL si aún no existe."""
+        try:
+            conn = self._get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS lotes (
+                        batch_id VARCHAR(100) PRIMARY KEY,
+                        source VARCHAR(50) NOT NULL,
+                        file_name VARCHAR(255) NOT NULL,
+                        file_hash VARCHAR(64) NOT NULL UNIQUE,
+                        file_size_bytes BIGINT NOT NULL,
+                        load_date DATE NOT NULL,
+                        ingest_timestamp TIMESTAMP NOT NULL,
+                        destination_path TEXT NOT NULL,
+                        status VARCHAR(50) NOT NULL,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_lotes_file_hash ON lotes (file_hash);
+                    CREATE INDEX IF NOT EXISTS idx_lotes_source_status ON lotes (source, status);
+                """)
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.warning("No se pudo verificar/crear la tabla 'lotes' en Cloud SQL: %s", e)
+
+    def _load_registry_local(self) -> Dict[str, Any]:
+        """Lee el registro de lotes desde el archivo JSON local."""
         try:
             with open(self.control_file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             return {"batches": []}
 
-    def _save_registry(self, registry: Dict[str, Any]) -> None:
-        """Escribe atómicamente el registro completo de lotes."""
-        if not self.config.is_aws:
-            temp_path = f"{self.control_file_path}.tmp"
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(registry, f, indent=2)
-            os.replace(temp_path, self.control_file_path)
+    def _save_registry_local(self, registry: Dict[str, Any]) -> None:
+        """Escribe atómicamente el registro de lotes en el archivo JSON local."""
+        temp_path = f"{self.control_file_path}.tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(registry, f, indent=2)
+        os.replace(temp_path, self.control_file_path)
 
     def is_batch_processed(self, file_hash: str, source: Optional[str] = None) -> bool:
         """
@@ -122,34 +155,86 @@ class BatchControlManager:
         Returns:
             bool: True si el hash ya existe y no falló, False si es un lote nuevo.
         """
-        registry = self._load_registry()
+        if self.config.is_gcp:
+            try:
+                conn = self._get_db_connection()
+                with conn.cursor() as cur:
+                    if source:
+                        cur.execute(
+                            "SELECT status FROM lotes WHERE file_hash = %s AND LOWER(source) = LOWER(%s) AND status != 'FAILED'",
+                            (file_hash, source),
+                        )
+                    else:
+                        cur.execute(
+                            "SELECT status FROM lotes WHERE file_hash = %s AND status != 'FAILED'",
+                            (file_hash,),
+                        )
+                    row = cur.fetchone()
+                conn.close()
+                return row is not None
+            except Exception as e:
+                logger.warning("Fallo al consultar tabla 'lotes' en Cloud SQL (%s). Verificando registro local de respaldo.", e)
+                # Fallback al registro local si la base de datos no está disponible
+                return self._is_batch_processed_local(file_hash, source)
+
+        return self._is_batch_processed_local(file_hash, source)
+
+    def _is_batch_processed_local(self, file_hash: str, source: Optional[str] = None) -> bool:
+        registry = self._load_registry_local()
         for batch in registry.get("batches", []):
             if batch.get("file_hash") == file_hash:
                 if source and batch.get("source", "").lower() != source.lower():
                     continue
-                # Se considera procesado si su estado no es 'FAILED'
                 if batch.get("status") != "FAILED":
                     return True
         return False
 
     def register_batch(self, metadata: BatchMetadata) -> None:
         """
-        Registra un nuevo lote en el catálogo de control.
+        Registra un nuevo lote en el catálogo de control (Cloud SQL o archivo local).
 
         Args:
             metadata: Objeto BatchMetadata a persistir.
         """
-        registry = self._load_registry()
-        batches = registry.setdefault("batches", [])
+        if self.config.is_gcp:
+            try:
+                conn = self._get_db_connection()
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO lotes (
+                            batch_id, source, file_name, file_hash, file_size_bytes,
+                            load_date, ingest_timestamp, destination_path, status, updated_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                        ON CONFLICT (batch_id) DO UPDATE SET
+                            status = EXCLUDED.status,
+                            updated_at = CURRENT_TIMESTAMP
+                    """, (
+                        metadata.batch_id,
+                        metadata.source,
+                        metadata.file_name,
+                        metadata.file_hash,
+                        metadata.file_size_bytes,
+                        metadata.load_date,
+                        metadata.ingest_timestamp,
+                        metadata.destination_path,
+                        metadata.status,
+                    ))
+                conn.commit()
+                conn.close()
+                logger.info("Lote registrado en Cloud SQL (tabla lotes): [%s]", metadata.batch_id)
+                return
+            except Exception as e:
+                logger.warning("Fallo al registrar lote en Cloud SQL: %s. Respaldando en local.", e)
 
-        # Evitar duplicar la misma entrada exacta de batch_id
+        # Registro en JSON local
+        registry = self._load_registry_local()
+        batches = registry.setdefault("batches", [])
         filtered_batches = [b for b in batches if b.get("batch_id") != metadata.batch_id]
         filtered_batches.append(metadata.to_dict())
         registry["batches"] = filtered_batches
-
-        self._save_registry(registry)
+        self._save_registry_local(registry)
         logger.info(
-            "Lote registrado en control: [%s] Fuente: %s | Hash: %s",
+            "Lote registrado en control local: [%s] Fuente: %s | Hash: %s",
             metadata.batch_id,
             metadata.source,
             metadata.file_hash[:12],
@@ -166,8 +251,25 @@ class BatchControlManager:
         Returns:
             bool: True si el lote fue encontrado y actualizado, False en caso contrario.
         """
-        registry = self._load_registry()
         updated = False
+        if self.config.is_gcp:
+            try:
+                conn = self._get_db_connection()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE lotes SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE file_hash = %s",
+                        (new_status, file_hash),
+                    )
+                    updated = cur.rowcount > 0
+                conn.commit()
+                conn.close()
+                if updated:
+                    logger.info("Estado del lote %s actualizado a '%s' en Cloud SQL.", file_hash[:12], new_status)
+                    return True
+            except Exception as e:
+                logger.warning("Fallo al actualizar lote en Cloud SQL: %s. Actualizando registro local.", e)
+
+        registry = self._load_registry_local()
         for batch in registry.get("batches", []):
             if batch.get("file_hash") == file_hash:
                 batch["status"] = new_status
@@ -175,8 +277,8 @@ class BatchControlManager:
                 updated = True
 
         if updated:
-            self._save_registry(registry)
-            logger.info("Estado del lote con hash %s actualizado a: %s", file_hash[:12], new_status)
+            self._save_registry_local(registry)
+            logger.info("Estado del lote con hash %s actualizado a: %s en control local", file_hash[:12], new_status)
         return updated
 
     def get_pending_batches(self, source: Optional[str] = None) -> List[BatchMetadata]:
@@ -189,7 +291,44 @@ class BatchControlManager:
         Returns:
             List[BatchMetadata]: Lista de lotes pendientes.
         """
-        registry = self._load_registry()
+        if self.config.is_gcp:
+            try:
+                conn = self._get_db_connection()
+                with conn.cursor() as cur:
+                    if source:
+                        cur.execute("""
+                            SELECT batch_id, source, file_name, file_hash, file_size_bytes,
+                                   load_date::text, ingest_timestamp::text, destination_path, status
+                            FROM lotes
+                            WHERE status = 'REGISTERED' AND LOWER(source) = LOWER(%s)
+                        """, (source,))
+                    else:
+                        cur.execute("""
+                            SELECT batch_id, source, file_name, file_hash, file_size_bytes,
+                                   load_date::text, ingest_timestamp::text, destination_path, status
+                            FROM lotes
+                            WHERE status = 'REGISTERED'
+                        """)
+                    rows = cur.fetchall()
+                conn.close()
+                return [
+                    BatchMetadata(
+                        batch_id=r[0],
+                        source=r[1],
+                        file_name=r[2],
+                        file_hash=r[3],
+                        file_size_bytes=int(r[4]),
+                        load_date=str(r[5]),
+                        ingest_timestamp=str(r[6]),
+                        destination_path=r[7],
+                        status=r[8],
+                    )
+                    for r in rows
+                ]
+            except Exception as e:
+                logger.warning("Fallo al leer lotes pendientes de Cloud SQL: %s. Leyendo local.", e)
+
+        registry = self._load_registry_local()
         results = []
         for b in registry.get("batches", []):
             if b.get("status") == "REGISTERED":

@@ -1,6 +1,6 @@
 """
-Fábrica y Gestor de SparkSession para PySpark 3.5.1.
-Configura parámetros de rendimiento, soporte S3A para AWS y PostgreSQL JDBC.
+Fábrica y Gestor de SparkSession para PySpark 3.5.3 (Dataproc 2.2 / Local).
+Configura parámetros de rendimiento, soporte GCS para Google Cloud y PostgreSQL JDBC para Cloud SQL.
 """
 
 from typing import Optional, Dict, Any, TYPE_CHECKING
@@ -24,8 +24,8 @@ def get_spark_session(
     Aplica configuraciones para:
     - Timezone 'America/Lima' (consistencia epidemiológica en Perú).
     - Particionamiento de shuffle según entorno.
-    - Conector Hadoop S3A si el entorno es 'aws'.
-    - Paquete JDBC de PostgreSQL para la capa de Serving.
+    - Conector Hadoop GCS (gs://) si el entorno es 'gcp' (Dataproc / Cloud Storage).
+    - Paquete JDBC de PostgreSQL para la capa de Serving (Cloud SQL).
 
     Args:
         app_name: Nombre de la aplicación Spark (opcional).
@@ -53,34 +53,29 @@ def get_spark_session(
         .config("spark.sql.constraintPropagation.enabled", "false")
     )
 
-    # Configuración de paquete PostgreSQL JDBC
+    # Configuración de paquete PostgreSQL JDBC (Cloud SQL / Local)
     builder = builder.config(
         "spark.jars.packages",
         "org.postgresql:postgresql:42.7.3"
     )
 
-    # Configuración de almacenamiento en la nube (AWS S3 vía S3A)
-    if cfg.is_aws:
-        logger.info("Configurando soporte AWS S3A en Spark para el bucket: %s", cfg.s3_bucket)
+    # Configuración de almacenamiento en Google Cloud Storage (GCS vía gs://)
+    if cfg.is_gcp:
+        logger.info("Configurando soporte Google Cloud Storage (gs://) para el proyecto: %s", cfg.gcp_project_id)
         builder = (
             builder
-            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-            .config("spark.hadoop.fs.s3a.fast.upload", "true")
-            .config("spark.hadoop.fs.s3a.endpoint.region", cfg.aws_region)
+            .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem")
+            .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
         )
 
-        if cfg.aws_access_key and cfg.aws_secret_key:
-            builder = (
-                builder
-                .config("spark.hadoop.fs.s3a.access.key", cfg.aws_access_key)
-                .config("spark.hadoop.fs.s3a.secret.key", cfg.aws_secret_key)
-            )
+        if cfg.gcp_project_id:
+            builder = builder.config("spark.hadoop.fs.gs.project.id", cfg.gcp_project_id)
 
-        if cfg.s3_endpoint:
+        if cfg.google_application_credentials:
             builder = (
                 builder
-                .config("spark.hadoop.fs.s3a.endpoint", cfg.s3_endpoint)
-                .config("spark.hadoop.fs.s3a.path.style.access", "true")
+                .config("spark.hadoop.google.cloud.auth.service.account.enable", "true")
+                .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", cfg.google_application_credentials)
             )
 
     # Aplicar configuraciones adicionales pasadas explícitamente

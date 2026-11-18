@@ -4,9 +4,10 @@ Manejo de nombres de columnas, escritura dinámica en Parquet particionado
 y protección de celdas pequeñas para privacidad de datos sensibles.
 """
 
-from typing import List, Optional
-from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, trim, when
+from typing import TYPE_CHECKING, List, Optional
+if TYPE_CHECKING:
+    from pyspark.sql import DataFrame
+
 from src.common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -45,8 +46,10 @@ def normalize_column_names(df: DataFrame) -> DataFrame:
     return df
 
 
-def trim_text_columns(df: DataFrame, columnas: List[str]) -> DataFrame:
+def trim_text_columns(df: "DataFrame", columnas: List[str]) -> "DataFrame":
     """Aplica trim a una lista de columnas de texto existentes."""
+    from pyspark.sql.functions import col, trim
+
     for c in columnas:
         if c in df.columns:
             df = df.withColumn(c, trim(col(c)))
@@ -54,9 +57,9 @@ def trim_text_columns(df: DataFrame, columnas: List[str]) -> DataFrame:
 
 
 def apply_small_cell_protection(
-    df: DataFrame,
+    df: "DataFrame",
     columnas_conteo: List[str],
-) -> DataFrame:
+) -> "DataFrame":
     """
     Aplica bandeo/generalización sobre celdas pequeñas (conteos sensibles < 5)
     para mitigar el riesgo de inferencia individual en salud pública.
@@ -64,6 +67,8 @@ def apply_small_cell_protection(
 
     Bandas: 0, 1-4, 5-9, 10-19, 20+, SIN_DATO.
     """
+    from pyspark.sql.functions import col, when
+
     for columna in columnas_conteo:
         if columna in df.columns:
             df = df.withColumn(
