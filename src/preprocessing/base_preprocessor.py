@@ -4,6 +4,8 @@ Manejo de nombres de columnas, escritura dinámica en Parquet particionado
 y protección de celdas pequeñas para privacidad de datos sensibles.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, List, Optional
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame
