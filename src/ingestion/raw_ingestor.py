@@ -48,7 +48,7 @@ def ingest_raw_file(
         Tuple[bool, Optional[BatchMetadata], str]:
             - éxito (bool)
             - metadata (BatchMetadata o None si fue omitido)
-            - mensaje o estado ('INGESTED', 'SKIPPED_DUPLICATE', 'ERROR')
+            - mensaje o estado ('INGESTED', 'SKIPPED_DUPLICATE', 'EMPTY_FILE', 'FILE_NOT_FOUND', 'ERROR')
     """
     cfg = config or get_config()
     source_clean = source.strip().lower()
@@ -60,6 +60,10 @@ def ingest_raw_file(
     if not input_path.is_file():
         logger.error("Archivo de origen no encontrado: %s", file_path)
         return False, None, f"FILE_NOT_FOUND: {file_path}"
+
+    if input_path.stat().st_size == 0:
+        logger.error("Archivo de origen vacío (0 bytes), no se ingiere: %s", file_path)
+        return False, None, f"EMPTY_FILE: {file_path}"
 
     # 1. Calcular Hash SHA-256
     file_hash = calculate_file_sha256(str(input_path))
