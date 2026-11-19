@@ -23,6 +23,7 @@ from src.ingestion.batch_manager import BatchControlManager
 from src.preprocessing.base_preprocessor import (
     normalize_column_names,
     write_partitioned_parquet_incremental,
+    mark_pending_batches_failed,
 )
 
 logger = get_logger("Limpieza_SENAMHI")
@@ -141,26 +142,30 @@ def procesar_silver_senamhi(
     """
     cfg = config or get_config()
     active_spark = spark or get_spark_session(app_name="Limpieza_SENAMHI", config=cfg)
+    control_mgr = BatchControlManager(config=cfg)
 
     ruta_in = input_path or f"{cfg.get_bronze_path('senamhi')}/*/*.csv"
     ruta_out = output_parquet_path or f"{cfg.get_silver_path('senamhi')}/parquet"
 
-    logger.info("Leyendo datos crudos de SENAMHI desde: %s", ruta_in)
-    df_raw = (
-        active_spark.read
-        .option("header", True)
-        .option("sep", ",")
-        .option("encoding", "UTF-8")
-        .csv(ruta_in)
-    )
+    try:
+        logger.info("Leyendo datos crudos de SENAMHI desde: %s", ruta_in)
+        df_raw = (
+            active_spark.read
+            .option("header", True)
+            .option("sep", ",")
+            .option("encoding", "UTF-8")
+            .csv(ruta_in)
+        )
 
-    df_silver = transformar_datos_senamhi(df_raw)
+        df_silver = transformar_datos_senamhi(df_raw)
 
-    # Escribir Parquet particionado por 'Ano'
-    write_partitioned_parquet_incremental(df_silver, ruta_out, partition_col="Ano")
+        # Escribir Parquet particionado por 'Ano'
+        write_partitioned_parquet_incremental(df_silver, ruta_out, partition_col="Ano")
+    except Exception as e:
+        mark_pending_batches_failed(control_mgr, "senamhi", e)
+        raise
 
     # Actualizar estado de lotes en el gestor de control
-    control_mgr = BatchControlManager(config=cfg)
     for b in control_mgr.get_pending_batches(source="senamhi"):
         control_mgr.update_batch_status(b.file_hash, "PROCESSED_SILVER")
 

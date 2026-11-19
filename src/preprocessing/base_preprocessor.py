@@ -4,9 +4,12 @@ Manejo de nombres de columnas, escritura dinámica en Parquet particionado
 y protección de celdas pequeñas para privacidad de datos sensibles.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, List, Optional
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame
+    from src.ingestion.batch_manager import BatchControlManager
 
 from src.common.logger import get_logger
 
@@ -81,6 +84,37 @@ def apply_small_cell_protection(
                 .otherwise("SIN_DATO"),
             )
     return df
+
+
+def mark_pending_batches_failed(
+    control_mgr: "BatchControlManager",
+    source: str,
+    error: Exception,
+) -> None:
+    """
+    Marca como 'FAILED' todos los lotes pendientes ('REGISTERED') de una fuente
+    cuando el procesamiento Silver falla a mitad de camino, en vez de dejarlos
+    colgados en 'REGISTERED' sin ninguna explicación. Registra un log claro
+    con la causa del error (no el traceback crudo) para facilitar el
+    diagnóstico. Un lote marcado como FAILED no avanza a la capa Silver.
+
+    Args:
+        control_mgr: Gestor de control de lotes.
+        source: Fuente de datos ('ira', 'malaria' o 'senamhi').
+        error: Excepción capturada que causó el fallo.
+    """
+    logger.error(
+        "Fallo el procesamiento Silver para la fuente '%s': %s",
+        source,
+        error,
+    )
+    for batch in control_mgr.get_pending_batches(source=source):
+        control_mgr.update_batch_status(batch.file_hash, "FAILED")
+        logger.error(
+            "Lote marcado como FAILED (no avanza a Silver): [%s] archivo: %s",
+            batch.batch_id,
+            batch.file_name,
+        )
 
 
 def write_partitioned_parquet_incremental(
