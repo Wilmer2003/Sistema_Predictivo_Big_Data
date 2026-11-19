@@ -5,7 +5,12 @@ baseline de persistencia y división temporal.
 """
 
 import unittest
-from src.modeling.pipeline import DEFAULT_FEATURE_COLS, TARGET_COL_IRA, TARGET_COL_MALARIA
+from src.modeling.pipeline import (
+    DEFAULT_FEATURE_COLS,
+    TARGET_COL_IRA,
+    TARGET_COL_MALARIA,
+    validar_features_sin_fuga,
+)
 from src.modeling.baseline import calcular_metricas_pure_python
 
 try:
@@ -24,8 +29,38 @@ class TestModelingLogica(unittest.TestCase):
         self.assertIn("temp_media_promedio_lag1", DEFAULT_FEATURE_COLS)
         self.assertIn("precipitacion_total_lag1", DEFAULT_FEATURE_COLS)
         self.assertIn("ira_total_menores_5_lag1", DEFAULT_FEATURE_COLS)
+        self.assertNotIn(TARGET_COL_IRA, DEFAULT_FEATURE_COLS)
+        self.assertNotIn("ira_total_menores_5_media_movil_3s", DEFAULT_FEATURE_COLS)
+        self.assertNotIn("delta_ira_total_menores_5_1s", DEFAULT_FEATURE_COLS)
         self.assertEqual(TARGET_COL_IRA, "ira_total_menores_5")
         self.assertEqual(TARGET_COL_MALARIA, "malaria_casos_total")
+
+    def test_validar_features_sin_fuga_rechaza_objetivo_actual_y_derivadas(self):
+        """Rechaza el objetivo de la semana y variables que lo incluyen."""
+        variables_con_fuga = [
+            TARGET_COL_IRA,
+            "ira_total_menores_5_media_movil_3s",
+            "delta_ira_total_menores_5_1s",
+        ]
+        for variable in variables_con_fuga:
+            with self.subTest(variable=variable):
+                with self.assertRaisesRegex(ValueError, variable):
+                    validar_features_sin_fuga(TARGET_COL_IRA, [variable])
+
+    def test_validar_features_sin_fuga_permite_lags_previos(self):
+        """Los rezagos de semanas anteriores pueden usarse como predictores."""
+        validar_features_sin_fuga(
+            TARGET_COL_IRA,
+            ["ira_total_menores_5_lag1", "temp_media_promedio_lag1"],
+        )
+
+    def test_validar_features_sin_fuga_tambien_cubre_malaria(self):
+        """La validación detecta fuga para el segundo objetivo del proyecto."""
+        with self.assertRaisesRegex(ValueError, "malaria_casos_total_media_movil_3s"):
+            validar_features_sin_fuga(
+                TARGET_COL_MALARIA,
+                ["malaria_casos_total_media_movil_3s"],
+            )
 
     def test_calcular_metricas_pure_python_exact_match(self):
         """Verifica métricas perfectas (RMSE=0, MAE=0, R2=1.0)."""
@@ -94,6 +129,14 @@ class TestModelingPySpark(unittest.TestCase):
 
         self.assertTrue(all(a <= 2022 for a in anos_train))
         self.assertTrue(all(a > 2022 for a in anos_test))
+
+    def test_pipeline_rechaza_predictor_derivado_del_objetivo(self):
+        """El constructor MLlib no permite incluir una media del objetivo actual."""
+        with self.assertRaisesRegex(ValueError, "malaria_casos_total_media_movil_3s"):
+            construir_pipeline_mllib(
+                feature_cols=["malaria_casos_total_media_movil_3s"],
+                target_col=TARGET_COL_MALARIA,
+            )
 
 
 if __name__ == "__main__":

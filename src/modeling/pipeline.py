@@ -31,12 +31,30 @@ DEFAULT_FEATURE_COLS = [
     "ira_total_menores_5_lag1",
     "ira_total_menores_5_lag2",
     "ira_total_menores_5_lag3",
-    "ira_total_menores_5_media_movil_3s",
-    "delta_ira_total_menores_5_1s",
 ]
 
 TARGET_COL_IRA = "ira_total_menores_5"
 TARGET_COL_MALARIA = "malaria_casos_total"
+
+
+def validar_features_sin_fuga(target_col: str, feature_cols: List[str]) -> None:
+    """Rechaza predictores que contienen el objetivo de la misma semana.
+
+    Las medias móviles y deltas epidemiológicos actuales incluyen el valor
+    observado en la semana que se intenta predecir. Los rezagos explícitos
+    (por ejemplo, ``<objetivo>_lag1``) sí representan semanas anteriores.
+    """
+    fugas = [
+        feature
+        for feature in feature_cols
+        if feature == target_col
+        or feature.startswith(f"{target_col}_media_movil_")
+        or feature.startswith(f"delta_{target_col}_")
+    ]
+    if fugas:
+        raise ValueError(
+            f"Predictores con fuga del objetivo actual '{target_col}': {', '.join(fugas)}"
+        )
 
 
 def preparar_features_df(
@@ -59,6 +77,7 @@ def preparar_features_df(
     from pyspark.sql.functions import col
 
     cols = feature_cols or DEFAULT_FEATURE_COLS
+    validar_features_sin_fuga(target_col, cols)
     cols_existentes = [c for c in cols if c in df.columns]
 
     if target_col not in df.columns:
@@ -79,6 +98,7 @@ def preparar_features_df(
 def construir_pipeline_mllib(
     feature_cols: Optional[List[str]] = None,
     output_features_col: str = "features",
+    target_col: str = TARGET_COL_IRA,
 ) -> "Pipeline":
     """
     Construye las etapas del pipeline de PySpark MLlib:
@@ -88,14 +108,16 @@ def construir_pipeline_mllib(
     Args:
         feature_cols: Lista de nombres de columnas a transformar en vector.
         output_features_col: Nombre de la columna de vector escalado final.
+        target_col: Variable objetivo usada para rechazar predictores con fuga.
 
     Returns:
         Pipeline: Objeto Pipeline de PySpark listo para ajustar y transformar.
     """
+    cols = feature_cols or DEFAULT_FEATURE_COLS
+    validar_features_sin_fuga(target_col, cols)
+
     from pyspark.ml import Pipeline
     from pyspark.ml.feature import VectorAssembler, StandardScaler
-
-    cols = feature_cols or DEFAULT_FEATURE_COLS
 
     assembler = VectorAssembler(
         inputCols=cols,

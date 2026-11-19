@@ -88,7 +88,7 @@ def entrenar_modelo_predictivo(
     train_df, test_df = division_temporal_train_test(df_clean, split_year=split_year)
 
     # 1. Pipeline de preparación de características
-    pipeline_prep = construir_pipeline_mllib()
+    pipeline_prep = construir_pipeline_mllib(target_col=target_col)
 
     # 2. Instanciar estimador según tipo solicitado
     if tipo_modelo.lower() == "gbt":
