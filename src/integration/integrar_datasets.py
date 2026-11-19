@@ -241,6 +241,13 @@ def procesar_capa_gold(
         )
 
     df_integrado = integrar_fuentes_silver(df_ira, df_malaria, df_senamhi)
+    cobertura_clima = resumir_cobertura_climatica(df_integrado)
+    logger.info(
+        "Cobertura de clima regional: %.2f%% (%d de %d filas distrito-semana).",
+        cobertura_clima["porcentaje_con_clima"],
+        cobertura_clima["distrito_semana_con_clima"],
+        cobertura_clima["total_distrito_semana"],
+    )
     df_features = aplicar_feature_engineering_completo(df_integrado)
 
     dim_ubigeo = construir_dim_ubigeo(df_ira)
