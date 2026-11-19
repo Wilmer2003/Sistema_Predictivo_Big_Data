@@ -128,6 +128,42 @@ def integrar_fuentes_silver(
     return df_integrado
 
 
+def resumir_cobertura_climatica(
+    df_integrado: "DataFrame",
+    columna_referencia: str = "temp_media_promedio",
+) -> dict:
+    """Resume qué proporción de filas distrito-semana tiene clima semanal.
+
+    El clima se agrega a nivel departamental por año y semana, y luego se
+    comparte entre los distritos de esa semana. Por ello, el porcentaje mide
+    cobertura temporal del clima regional en las filas distrito-semana; no
+    cobertura de estaciones meteorológicas dentro de cada distrito.
+    """
+    from pyspark.sql.functions import col, count, sum as spark_sum, when
+
+    if columna_referencia not in df_integrado.columns:
+        raise ValueError(f"Columna de clima '{columna_referencia}' no encontrada.")
+
+    resumen = (
+        df_integrado
+        .agg(
+            count("*").alias("total_distrito_semana"),
+            spark_sum(when(col(columna_referencia).isNotNull(), 1).otherwise(0)).alias(
+                "distrito_semana_con_clima"
+            ),
+        )
+        .first()
+    )
+    total = int(resumen["total_distrito_semana"] or 0)
+    con_clima = int(resumen["distrito_semana_con_clima"] or 0)
+    porcentaje = round(100 * con_clima / total, 2) if total else 0.0
+    return {
+        "total_distrito_semana": total,
+        "distrito_semana_con_clima": con_clima,
+        "porcentaje_con_clima": porcentaje,
+    }
+
+
 def aplicar_feature_engineering_completo(df_integrado: "DataFrame") -> "DataFrame":
     """
     Aplica cálculo de lags de 1 a 3 semanas, deltas y medias móviles sobre el dataset integrado.

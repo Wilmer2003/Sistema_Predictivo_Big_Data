@@ -23,6 +23,7 @@ try:
         agregar_senamhi_semanal,
         integrar_fuentes_silver,
         aplicar_feature_engineering_completo,
+        resumir_cobertura_climatica,
     )
     HAS_PYSPARK = True
 except ImportError:
@@ -101,6 +102,95 @@ class TestIntegracionPySpark(unittest.TestCase):
         self.assertEqual(filas[3]["casos_lag1"], 30)
         self.assertEqual(filas[3]["casos_lag2"], 20)
         self.assertEqual(filas[3]["casos_lag3"], 10)
+
+    def test_lags_no_usan_valores_de_semanas_futuras(self):
+        """Un valor alto futuro no debe aparecer como rezago de una semana anterior."""
+        schema = StructType([
+            StructField("ubigeo", StringType(), True),
+            StructField("ano", IntegerType(), True),
+            StructField("semana_epidemiologica", IntegerType(), True),
+            StructField("casos", IntegerType(), True),
+        ])
+        datos = [
+            ("130101", 2020, 1, 10),
+            ("130101", 2020, 2, 20),
+            ("130101", 2020, 3, 99999),
+        ]
+
+        filas = calcular_lags_temporales(
+            self.spark.createDataFrame(datos, schema),
+            columnas_a_rezagar=["casos"],
+            max_lag=1,
+        ).orderBy("semana_epidemiologica").collect()
+
+        self.assertIsNone(filas[0]["casos_lag1"])
+        self.assertEqual(filas[1]["casos_lag1"], 10)
+        self.assertEqual(filas[2]["casos_lag1"], 20)
+
+    def test_clima_se_alinea_por_ano_y_semana_y_resume_cobertura(self):
+        """Evita cruces entre años/semanas y mide la cobertura regional por distrito-semana."""
+        ira_schema = StructType([
+            StructField("Codigo_Ubigeo", StringType(), True),
+            StructField("Ano", IntegerType(), True),
+            StructField("Semana_Epidemiologica", IntegerType(), True),
+            StructField("IRA_menores_2_meses", IntegerType(), True),
+            StructField("IRA_2_a_11_meses", IntegerType(), True),
+            StructField("IRA_1_a_4_anos", IntegerType(), True),
+            StructField("Neumonia_menores_2_meses", IntegerType(), True),
+            StructField("Neumonia_2_a_11_meses", IntegerType(), True),
+            StructField("Neumonia_1_a_4_anos", IntegerType(), True),
+            StructField("Defunciones", IntegerType(), True),
+        ])
+        ira = self.spark.createDataFrame(
+            [
+                ("130101", 2020, 1, 1, 0, 0, 0, 0, 0, 0),
+                ("130101", 2021, 1, 1, 0, 0, 0, 0, 0, 0),
+                ("130101", 2022, 1, 1, 0, 0, 0, 0, 0, 0),
+            ],
+            ira_schema,
+        )
+        malaria_schema = StructType([
+            StructField("ubigeo", StringType(), True),
+            StructField("ano", IntegerType(), True),
+            StructField("semana", IntegerType(), True),
+            StructField("Malaria_total", IntegerType(), True),
+            StructField("B50", IntegerType(), True),
+            StructField("B51", IntegerType(), True),
+        ])
+        malaria = self.spark.createDataFrame([], malaria_schema)
+        clima_schema = StructType([
+            StructField("Ano", IntegerType(), True),
+            StructField("Semana_Epidemiologica", IntegerType(), True),
+            StructField("Temperatura_maxima", DoubleType(), True),
+            StructField("Temperatura_minima", DoubleType(), True),
+            StructField("tc", DoubleType(), True),
+            StructField("Precipitacion_acumulada", DoubleType(), True),
+        ])
+        clima = self.spark.createDataFrame(
+            [
+                (2020, 1, 20.0, 10.0, 10.0, 0.0),
+                (2021, 1, 30.0, 20.0, 20.0, 1.0),
+                (2022, 2, 40.0, 30.0, 99.0, 2.0),
+            ],
+            clima_schema,
+        )
+
+        integrado = integrar_fuentes_silver(ira, malaria, clima)
+        temperaturas = {
+            (fila["ano"], fila["semana_epidemiologica"]): fila["temp_media_promedio"]
+            for fila in integrado.collect()
+        }
+        self.assertEqual(temperaturas[(2020, 1)], 10.0)
+        self.assertEqual(temperaturas[(2021, 1)], 20.0)
+        self.assertIsNone(temperaturas[(2022, 1)])
+        self.assertEqual(
+            resumir_cobertura_climatica(integrado),
+            {
+                "total_distrito_semana": 3,
+                "distrito_semana_con_clima": 2,
+                "porcentaje_con_clima": 66.67,
+            },
+        )
 
 
 if __name__ == "__main__":
