@@ -19,6 +19,7 @@ from src.preprocessing.base_preprocessor import (
     trim_text_columns,
     apply_small_cell_protection,
     write_partitioned_parquet_incremental,
+    mark_pending_batches_failed,
 )
 
 logger = get_logger("Limpieza_IRA")
@@ -132,27 +133,31 @@ def procesar_silver_ira(
     """
     cfg = config or get_config()
     active_spark = spark or get_spark_session(app_name="Limpieza_IRA", config=cfg)
+    control_mgr = BatchControlManager(config=cfg)
 
     # Ruta de entrada Bronze
     ruta_in = input_path or f"{cfg.get_bronze_path('ira')}/*/*.csv"
     ruta_out = output_parquet_path or f"{cfg.get_silver_path('ira')}/parquet"
 
-    logger.info("Leyendo datos crudos de IRA desde: %s", ruta_in)
-    df_raw = (
-        active_spark.read
-        .option("header", True)
-        .option("sep", ";")
-        .option("encoding", "UTF-8")
-        .csv(ruta_in)
-    )
+    try:
+        logger.info("Leyendo datos crudos de IRA desde: %s", ruta_in)
+        df_raw = (
+            active_spark.read
+            .option("header", True)
+            .option("sep", ";")
+            .option("encoding", "UTF-8")
+            .csv(ruta_in)
+        )
 
-    df_silver = transformar_datos_ira(df_raw)
+        df_silver = transformar_datos_ira(df_raw)
 
-    # Materializar y escribir a Parquet particionado
-    write_partitioned_parquet_incremental(df_silver, ruta_out, partition_col="Ano")
+        # Materializar y escribir a Parquet particionado
+        write_partitioned_parquet_incremental(df_silver, ruta_out, partition_col="Ano")
+    except Exception as e:
+        mark_pending_batches_failed(control_mgr, "ira", e)
+        raise
 
     # Actualizar estado de lotes en el gestor de control
-    control_mgr = BatchControlManager(config=cfg)
     for b in control_mgr.get_pending_batches(source="ira"):
         control_mgr.update_batch_status(b.file_hash, "PROCESSED_SILVER")
 

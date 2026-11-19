@@ -24,6 +24,7 @@ from src.preprocessing.base_preprocessor import (
     normalize_column_names,
     trim_text_columns,
     write_partitioned_parquet_incremental,
+    mark_pending_batches_failed,
 )
 
 logger = get_logger("Limpieza_Malaria")
@@ -134,26 +135,30 @@ def procesar_silver_malaria(
     """
     cfg = config or get_config()
     active_spark = spark or get_spark_session(app_name="Limpieza_Malaria", config=cfg)
+    control_mgr = BatchControlManager(config=cfg)
 
     ruta_in = input_path or f"{cfg.get_bronze_path('malaria')}/*/*.csv"
     ruta_out = output_parquet_path or f"{cfg.get_silver_path('malaria')}/parquet"
 
-    logger.info("Leyendo datos crudos de Malaria desde: %s", ruta_in)
-    df_raw = (
-        active_spark.read
-        .option("header", True)
-        .option("sep", ",")
-        .option("encoding", "UTF-8")
-        .csv(ruta_in)
-    )
+    try:
+        logger.info("Leyendo datos crudos de Malaria desde: %s", ruta_in)
+        df_raw = (
+            active_spark.read
+            .option("header", True)
+            .option("sep", ",")
+            .option("encoding", "UTF-8")
+            .csv(ruta_in)
+        )
 
-    df_silver = transformar_datos_malaria(df_raw)
+        df_silver = transformar_datos_malaria(df_raw)
 
-    # Escribir Parquet particionado por 'ano'
-    write_partitioned_parquet_incremental(df_silver, ruta_out, partition_col="ano")
+        # Escribir Parquet particionado por 'ano'
+        write_partitioned_parquet_incremental(df_silver, ruta_out, partition_col="ano")
+    except Exception as e:
+        mark_pending_batches_failed(control_mgr, "malaria", e)
+        raise
 
     # Actualizar estado de lotes en el gestor de control
-    control_mgr = BatchControlManager(config=cfg)
     for b in control_mgr.get_pending_batches(source="malaria"):
         control_mgr.update_batch_status(b.file_hash, "PROCESSED_SILVER")
 
