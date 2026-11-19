@@ -1,7 +1,8 @@
 """
 Pipeline de Limpieza y Estandarización de Datos de Malaria (Capa Silver).
 Aplica tipado estricto, normalización de Ubigeo (6 dígitos) y localcod (10 dígitos),
-filtrado para La Libertad (13), diagnósticos B50/B51 y escritura en Parquet particionado.
+filtrado para La Libertad (13), diagnósticos B50/B51, protección de datos sensibles
+(generalización de edad y seudonimización de localidad) y escritura en Parquet particionado.
 """
 
 from typing import Optional
@@ -23,6 +24,8 @@ from src.ingestion.batch_manager import BatchControlManager
 from src.preprocessing.base_preprocessor import (
     normalize_column_names,
     trim_text_columns,
+    apply_age_generalization,
+    apply_pseudonymization,
     write_partitioned_parquet_incremental,
 )
 
@@ -99,12 +102,19 @@ def transformar_datos_malaria(df: DataFrame) -> DataFrame:
     else:
         df = df.dropDuplicates()
 
-    # 11. Columnas finales
+    # 11. Protección de datos sensibles
+    # "edad" y "localidad" son cuasi-identificadores: combinados con
+    # diagnostico/semana epidemiologica permiten reidentificar a una
+    # persona en localidades pequeñas con pocos casos.
+    df = apply_age_generalization(df, "edad")
+    df = apply_pseudonymization(df, "localidad")
+
+    # 12. Columnas finales
     columnas_finales = [
         "departamento",
         "provincia",
         "distrito",
-        "localidad",
+        "localidad_hash",
         "enfermedad",
         "ano",
         "semana",
@@ -112,7 +122,7 @@ def transformar_datos_malaria(df: DataFrame) -> DataFrame:
         "diresa",
         "ubigeo",
         "localcod",
-        "edad",
+        "edad_rango",
         "tipo_edad",
         "sexo",
         "Malaria_total",

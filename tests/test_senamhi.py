@@ -75,6 +75,28 @@ class TestLimpiezaSENAMHI(unittest.TestCase):
         self.assertEqual(row["Semana_Epidemiologica"], 1)
         self.assertEqual(row["Precipitacion_acumulada"], 0.0)
 
+    def test_idempotencia(self):
+        """Correr la transformación dos veces sobre los mismos datos debe dar el mismo resultado."""
+        schema = StructType([
+            StructField("Departamento", StringType(), True),
+            StructField("Estacion", StringType(), True),
+            StructField("Ano", IntegerType(), True),
+            StructField("Mes", IntegerType(), True),
+            StructField("Dia", IntegerType(), True),
+            StructField("Precipitacion_acumulada", DoubleType(), True),
+            StructField("Temperatura_maxima", DoubleType(), True),
+            StructField("Temperatura_minima", DoubleType(), True),
+            StructField("tc", DoubleType(), True),
+        ])
+        datos = [
+            ("LA LIBERTAD", "CACHICADAN", 2015, 1, 1, 0.0, 20.2, 10.6, 15.38),
+        ]
+
+        resultado_1 = transformar_datos_senamhi(self.spark.createDataFrame(datos, schema)).collect()
+        resultado_2 = transformar_datos_senamhi(self.spark.createDataFrame(datos, schema)).collect()
+
+        self.assertEqual(resultado_1, resultado_2)
+
 
 if __name__ == "__main__":
     unittest.main()

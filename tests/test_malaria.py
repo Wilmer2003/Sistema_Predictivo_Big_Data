@@ -1,9 +1,11 @@
 """
 Pruebas Unitarias para la Limpieza de Malaria (src/preprocessing/limpiar_malaria.py).
 Valida normalización de Ubigeo y localcod, filtro La Libertad (13),
-diagnósticos B50/B51 y deduplicación.
+diagnósticos B50/B51, deduplicación, protección de datos sensibles
+(generalización de edad y seudonimización de localidad) e idempotencia.
 """
 
+import re
 import unittest
 
 try:
@@ -81,6 +83,66 @@ class TestLimpiezaMalaria(unittest.TestCase):
         self.assertEqual(row["ubigeo"], "130809")
         self.assertEqual(row["diagnostic"], "B51")
         self.assertEqual(row["ano"], 2018)
+
+    def _schema_y_datos_proteccion(self):
+        schema = StructType([
+            StructField("departamento", StringType(), True),
+            StructField("provincia", StringType(), True),
+            StructField("distrito", StringType(), True),
+            StructField("localidad", StringType(), True),
+            StructField("enfermedad", StringType(), True),
+            StructField("ano", IntegerType(), True),
+            StructField("semana", IntegerType(), True),
+            StructField("diagnostic", StringType(), True),
+            StructField("diresa", StringType(), True),
+            StructField("ubigeo", StringType(), True),
+            StructField("localcod", StringType(), True),
+            StructField("edad", IntegerType(), True),
+            StructField("tipo_edad", StringType(), True),
+            StructField("sexo", StringType(), True),
+            StructField("Malaria_total", IntegerType(), True),
+            StructField("B50", IntegerType(), True),
+            StructField("B51", IntegerType(), True),
+        ])
+        datos = [
+            ("LA LIBERTAD", "PATAZ", "PATAZ", "NIMPANA", "MALARIA", 2018, 12, "B51", "13", "130809", "1308090002", 25, "A", "M", 1, 0, 1),
+        ]
+        return schema, datos
+
+    def test_proteccion_privacidad_edad_localidad(self):
+        """
+        Verifica que 'edad' y 'localidad' (cuasi-identificadores) no salgan
+        en texto plano en el dataset Silver: 'edad' se generaliza a rango
+        ('edad_rango') y 'localidad' se seudonimiza con hash ('localidad_hash').
+        """
+        schema, datos = self._schema_y_datos_proteccion()
+        df_in = self.spark.createDataFrame(datos, schema)
+        df_out = transformar_datos_malaria(df_in)
+        row = df_out.first()
+
+        # Las columnas originales con el dato en texto plano ya no deben existir
+        self.assertNotIn("edad", df_out.columns)
+        self.assertNotIn("localidad", df_out.columns)
+
+        # Edad 25 -> rango "15-44"
+        self.assertEqual(row["edad_rango"], "15-44")
+
+        # localidad_hash: hash hexadecimal de 12 caracteres, no el nombre real
+        self.assertIsNotNone(row["localidad_hash"])
+        self.assertTrue(re.fullmatch(r"[0-9a-f]{12}", row["localidad_hash"]))
+        self.assertNotEqual(row["localidad_hash"], "NIMPANA")
+
+    def test_idempotencia(self):
+        """Correr la transformación dos veces sobre los mismos datos debe dar el mismo resultado."""
+        schema, datos = self._schema_y_datos_proteccion()
+
+        df_in_1 = self.spark.createDataFrame(datos, schema)
+        resultado_1 = transformar_datos_malaria(df_in_1).collect()
+
+        df_in_2 = self.spark.createDataFrame(datos, schema)
+        resultado_2 = transformar_datos_malaria(df_in_2).collect()
+
+        self.assertEqual(resultado_1, resultado_2)
 
 
 if __name__ == "__main__":

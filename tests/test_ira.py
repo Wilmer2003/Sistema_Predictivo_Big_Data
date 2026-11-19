@@ -88,6 +88,33 @@ class TestLimpiezaIRA(unittest.TestCase):
         # 0 defunciones -> '0'
         self.assertEqual(row["Defunciones_rango"], "0")
 
+    def test_idempotencia(self):
+        """Correr la transformación dos veces sobre los mismos datos debe dar el mismo resultado."""
+        schema = StructType([
+            StructField("Departamento", StringType(), True),
+            StructField("Provincia", StringType(), True),
+            StructField("Distrito", StringType(), True),
+            StructField("Ano", IntegerType(), True),
+            StructField("Semana_Epidemiologica", IntegerType(), True),
+            StructField("Codigo_Departamento", StringType(), True),
+            StructField("Codigo_Ubigeo", StringType(), True),
+            StructField("IRA_menores_2_meses", IntegerType(), True),
+            StructField("IRA_2_a_11_meses", IntegerType(), True),
+            StructField("IRA_1_a_4_anos", IntegerType(), True),
+            StructField("Neumonia_menores_2_meses", IntegerType(), True),
+            StructField("Neumonia_2_a_11_meses", IntegerType(), True),
+            StructField("Neumonia_1_a_4_anos", IntegerType(), True),
+            StructField("Defunciones", IntegerType(), True),
+        ])
+        datos = [
+            ("LA LIBERTAD", "TRUJILLO", "TRUJILLO", 2020, 10, "13", "130101", 3, 5, 25, 0, 1, 0, 0),
+        ]
+
+        resultado_1 = transformar_datos_ira(self.spark.createDataFrame(datos, schema)).collect()
+        resultado_2 = transformar_datos_ira(self.spark.createDataFrame(datos, schema)).collect()
+
+        self.assertEqual(resultado_1, resultado_2)
+
 
 if __name__ == "__main__":
     unittest.main()
