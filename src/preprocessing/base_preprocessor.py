@@ -85,6 +85,56 @@ def apply_small_cell_protection(
     return df
 
 
+def apply_age_generalization(
+    df: "DataFrame",
+    columna_edad: str,
+) -> "DataFrame":
+    """
+    Generaliza una columna de edad exacta en rangos etarios, para reducir
+    la granularidad de un cuasi-identificador (anonimización por
+    generalización). Genera una columna complementaria con sufijo '_rango'.
+
+    Rangos: 0-4, 5-14, 15-44, 45-64, 65+, SIN_DATO.
+    """
+    from pyspark.sql.functions import col, when
+
+    if columna_edad not in df.columns:
+        return df
+
+    return df.withColumn(
+        f"{columna_edad}_rango",
+        when(col(columna_edad) < 5, "0-4")
+        .when(col(columna_edad) < 15, "5-14")
+        .when(col(columna_edad) < 45, "15-44")
+        .when(col(columna_edad) < 65, "45-64")
+        .when(col(columna_edad).isNotNull(), "65+")
+        .otherwise("SIN_DATO"),
+    )
+
+
+def apply_pseudonymization(
+    df: "DataFrame",
+    columna: str,
+    longitud_hash: int = 12,
+) -> "DataFrame":
+    """
+    Seudonimiza una columna mediante hash SHA-256 determinista truncado,
+    para ocultar el valor real (ej. nombre de localidad) sin perder la
+    capacidad de agrupar/contar por ese valor. Un mismo valor de entrada
+    siempre produce el mismo hash. Genera una columna complementaria
+    con sufijo '_hash'.
+    """
+    from pyspark.sql.functions import col, sha2, substring, trim, upper
+
+    if columna not in df.columns:
+        return df
+
+    return df.withColumn(
+        f"{columna}_hash",
+        substring(sha2(upper(trim(col(columna))), 256), 1, longitud_hash),
+    )
+
+
 def write_partitioned_parquet_incremental(
     df: DataFrame,
     output_path: str,
