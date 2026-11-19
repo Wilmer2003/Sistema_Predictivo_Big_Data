@@ -160,6 +160,61 @@ class TestIngestion(unittest.TestCase):
                 config=self.cfg,
             )
 
+    def test_ingest_raw_file_empty_file(self):
+        """Verifica que un archivo de 0 bytes se rechace y no se registre como lote."""
+        empty_path = os.path.join(self.temp_dir, "vacio_ira.csv")
+        with open(empty_path, "wb"):
+            pass  # crea el archivo sin escribir nada (0 bytes)
+
+        exito, meta, estado = ingest_raw_file(
+            file_path=empty_path,
+            source="ira",
+            config=self.cfg,
+        )
+
+        self.assertFalse(exito)
+        self.assertIsNone(meta)
+        self.assertTrue(estado.startswith("EMPTY_FILE"))
+
+        # No debe haber quedado registrado ningún lote para este archivo
+        mgr = BatchControlManager(config=self.cfg)
+        self.assertEqual(len(mgr.get_pending_batches(source="ira")), 0)
+
+    def test_ingest_raw_file_distinct_columns_not_treated_as_duplicate(self):
+        """
+        Verifica que dos archivos del mismo origen con columnas/contenido distinto
+        (por lo tanto, hash distinto) se ingieran como dos lotes independientes,
+        sin que el control de lotes los confunda por duplicados.
+        """
+        otro_contenido = (
+            b"Departamento;Provincia;Distrito;Ano;Semana_Epidemiologica;"
+            b"Codigo_Ubigeo;Columna_Extra\n"
+            b"LA LIBERTAD;TRUJILLO;TRUJILLO;2024;1;130101;999\n"
+        )
+        otro_path = os.path.join(self.temp_dir, "sample_ira_v2.csv")
+        with open(otro_path, "wb") as f:
+            f.write(otro_contenido)
+
+        exito1, meta1, estado1 = ingest_raw_file(
+            file_path=self.sample_csv_path,
+            source="ira",
+            config=self.cfg,
+        )
+        exito2, meta2, estado2 = ingest_raw_file(
+            file_path=otro_path,
+            source="ira",
+            config=self.cfg,
+        )
+
+        self.assertTrue(exito1)
+        self.assertTrue(exito2)
+        self.assertEqual(estado1, "INGESTED")
+        self.assertEqual(estado2, "INGESTED")
+        self.assertNotEqual(meta1.file_hash, meta2.file_hash)
+
+        mgr = BatchControlManager(config=self.cfg)
+        self.assertEqual(len(mgr.get_pending_batches(source="ira")), 2)
+
     def test_ingest_raw_file_gcp_mock(self):
         """Verifica que en modo GCP la ingesta apunte a gs:// y suba el blob a Google Cloud Storage."""
         gcp_cfg = AppConfig(
