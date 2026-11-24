@@ -5,6 +5,8 @@ baseline de persistencia y división temporal.
 """
 
 import unittest
+
+from conftest import crear_spark_session
 from src.modeling.pipeline import DEFAULT_FEATURE_COLS, TARGET_COL_IRA, TARGET_COL_MALARIA
 from src.modeling.baseline import calcular_metricas_pure_python
 
@@ -55,15 +57,7 @@ class TestModelingLogica(unittest.TestCase):
 class TestModelingPySpark(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.spark = (
-            SparkSession.builder
-            .appName("Test_Modeling")
-            .master("local[1]")
-            .config("spark.driver.memory", "1g")
-            .config("spark.sql.shuffle.partitions", "1")
-            .getOrCreate()
-        )
-        cls.spark.sparkContext.setLogLevel("ERROR")
+        cls.spark = crear_spark_session("Test_Modeling")
 
     @classmethod
     def tearDownClass(cls):

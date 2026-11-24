@@ -6,6 +6,8 @@ y construcción del modelo dimensional.
 
 import unittest
 
+from conftest import crear_spark_session
+
 from src.integration.dimensional_model import ESTACION_UBIGEO_MAP
 
 try:
@@ -48,15 +50,7 @@ class TestIntegracionLogica(unittest.TestCase):
 class TestIntegracionPySpark(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.spark = (
-            SparkSession.builder
-            .appName("Test_Integracion_Gold")
-            .master("local[1]")
-            .config("spark.driver.memory", "1g")
-            .config("spark.sql.shuffle.partitions", "1")
-            .getOrCreate()
-        )
-        cls.spark.sparkContext.setLogLevel("ERROR")
+        cls.spark = crear_spark_session("Test_Integracion_Gold")
 
     @classmethod
     def tearDownClass(cls):

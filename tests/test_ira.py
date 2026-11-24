@@ -6,6 +6,8 @@ protección de datos sensibles (celdas pequeñas) y deduplicación.
 
 import unittest
 
+from conftest import crear_spark_session
+
 try:
     from pyspark.sql import SparkSession
     from pyspark.sql.types import (
@@ -24,15 +26,7 @@ except ImportError:
 class TestLimpiezaIRA(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.spark = (
-            SparkSession.builder
-            .appName("Test_Limpieza_IRA")
-            .master("local[1]")
-            .config("spark.driver.memory", "1g")
-            .config("spark.sql.shuffle.partitions", "1")
-            .getOrCreate()
-        )
-        cls.spark.sparkContext.setLogLevel("ERROR")
+        cls.spark = crear_spark_session("Test_Limpieza_IRA")
 
     @classmethod
     def tearDownClass(cls):

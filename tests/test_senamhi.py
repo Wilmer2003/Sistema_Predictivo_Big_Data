@@ -6,6 +6,8 @@ Valida construcción de fecha y semana epidemiológica, filtros de consistencia 
 
 import unittest
 
+from conftest import crear_spark_session
+
 try:
     from pyspark.sql import SparkSession
     from pyspark.sql.types import (
@@ -25,15 +27,7 @@ except ImportError:
 class TestLimpiezaSENAMHI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.spark = (
-            SparkSession.builder
-            .appName("Test_Limpieza_SENAMHI")
-            .master("local[1]")
-            .config("spark.driver.memory", "1g")
-            .config("spark.sql.shuffle.partitions", "1")
-            .getOrCreate()
-        )
-        cls.spark.sparkContext.setLogLevel("ERROR")
+        cls.spark = crear_spark_session("Test_Limpieza_SENAMHI")
 
     @classmethod
     def tearDownClass(cls):

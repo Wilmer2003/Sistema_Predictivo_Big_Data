@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   pull_request:
@@ -23,8 +23,7 @@ jobs:
           cache: pip
 
       - name: Instalar dependencias
-        run: pip install -r requirements.txt pytest
+        run: python -m pip install -r requirements.txt
 
       - name: Ejecutar pruebas
-        run: |
-          pytest -q || { code=$?; [ "$code" -eq 5 ] && echo "Aún no hay pruebas" || exit "$code"; }
+        run: python -m pytest -q
