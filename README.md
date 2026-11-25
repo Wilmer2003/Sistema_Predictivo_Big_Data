@@ -76,205 +76,254 @@ Sistema_Predictivo_Big_Data/
 
 ---
 
-## 5. Guía Paso a Paso para Probar el Sistema en Modo Local (VS Code)
+## 5. Guía Paso a Paso para Probar el Sistema en Modo Local (Windows y VS Code)
 
-Sigue esta secuencia para comprobar de inicio a fin el funcionamiento del sistema en tu propia computadora antes de realizar cualquier conexión con los servicios de AWS.
+Sigue esta secuencia detallada para comprobar de inicio a fin el funcionamiento del sistema en tu propia computadora con Windows antes de conectarlo a la nube de AWS.
 
-### Requisitos Previos en tu Computadora
-1. **Visual Studio Code**: Descargado e instalado en tu sistema.
-2. **Python**: Versión 3.9, 3.10 o 3.11 instalada (asegúrate de marcar *"Add Python to PATH"* durante la instalación).
-3. **Java JDK 11 o 17**: Requerido por el motor de Apache Spark para las capas Silver, Gold y Modelado. Verifica abriendo una terminal y ejecutando `java -version`.
+---
+
+### Requisitos Previos en Windows
+1. **Visual Studio Code**: Descargado e instalado.
+2. **Python (64-bit)**: Versión 3.10, 3.11 o 3.12 instalada. Verifica abriendo una terminal de PowerShell y ejecutando:
+   ```powershell
+   python --version
+   ```
+   *(Asegúrate de que Python esté agregado a las variables de entorno PATH).*
+3. **Java JDK 11 o 17**: Requerido por Apache Spark para las capas Silver, Gold y Modelado.
+   * Recomendado: [Eclipse Adoptium Temurin JDK 11 o 17](https://adoptium.net/temurin/releases/).
+   * Verifica ejecutando en tu terminal:
+     ```powershell
+     java -version
+     ```
+   * Si no tienes configurada la variable `JAVA_HOME`, agrégala en Windows o ejecútalo en la sesión de PowerShell:
+     ```powershell
+     $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot"
+     ```
 4. **Extensiones recomendadas en VS Code**:
-   * *Python* y *Pylance* (de Microsoft).
+   * *Python* y *Pylance* (Microsoft).
+
+> [!IMPORTANT]
+> **Aviso Importante sobre Rutas con Caracteres Especiales (`&`) en Windows:**
+> Si la ruta donde tienes tu proyecto contiene el carácter `&` (por ejemplo: `D:\VII & VIII CICLO UPAO\...`), el comando interno de Windows `cmd.exe` (utilizado por los scripts de Apache Spark `spark-class2.cmd`) interpreta el `&` como un separador de comandos, arrojando el error:  
+> `""D:\VII" no se reconoce como un comando interno o externo"`.  
+>  
+> **Solución rápida y limpia (sin mover tus archivos):**  
+> Crea una unidad virtual temporal en Windows con el comando `subst`:
+> ```powershell
+> subst S: "D:\VII & VIII CICLO UPAO\BIG DATA\SISTEMA\Sistema_Predictivo_Big_Data"
+> cd S:\
+> ```
+> O bien abre directamente la carpeta `S:\` desde VS Code (`File` -> `Open Folder` -> `S:\`). Esto elimina espacios y símbolos `&` de la ruta activa, permitiendo que PySpark funcione al 100%.  
+> *(Para desmontar la unidad cuando termines: `subst S: /D`).*
 
 ---
 
 ### Paso 1: Abrir el Proyecto en VS Code
 1. Abre **Visual Studio Code**.
 2. Ve al menú superior: `File` -> `Open Folder...` (o `Archivo` -> `Abrir carpeta...`).
-3. Selecciona la carpeta raíz del repositorio:
-   ```text
-   Sistema_Predictivo_Big_Data
-   ```
+3. Selecciona la carpeta del proyecto (o la unidad `S:\` si usas la solución anterior).
 
 ---
 
-### Paso 2: Abrir una Terminal Integrada
-En VS Code, presiona ``Ctrl + ` `` (Ctrl + tecla de tilde/acento grave) o ve al menú superior:
-`Terminal` -> `New Terminal` (`Nueva terminal`). Asegúrate de que la terminal se abra en la raíz del repositorio.
+### Paso 2: Abrir una Terminal Integrada de PowerShell
+En VS Code, presiona ``Ctrl + ` `` (Ctrl + acento grave) o ve a `Terminal` -> `New Terminal`.  
+Asegúrate de que la terminal sea de **PowerShell**.
 
 ---
 
-### Paso 3: Crear y Activar un Entorno Virtual de Python
-En la terminal integrada de VS Code, ejecuta los siguientes comandos según tu sistema operativo:
+### Paso 3: Crear y Activar el Entorno Virtual de Python
+En la terminal de PowerShell, ejecuta:
 
-**En Windows (PowerShell):**
 ```powershell
 python -m venv venv
+```
+
+Si al intentar activar el entorno PowerShell te muestra el error:  
+*`"la ejecución de scripts está deshabilitada en este sistema"`*, habilita la ejecución para tu sesión actual:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+Ahora activa el entorno virtual:
+
+```powershell
 .\venv\Scripts\Activate.ps1
 ```
-*(Si PowerShell bloquea la activación de scripts por políticas de seguridad, ejecuta una sola vez: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` y vuelve a activar).*
 
-**En Linux / macOS:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-Al activarse, verás el prefijo `(venv)` al inicio de la línea de comandos en tu terminal.
+Verás el prefijo `(venv)` al inicio de la línea de comandos de tu terminal.
 
 ---
 
 ### Paso 4: Seleccionar el Intérprete de Python en VS Code
-Para que VS Code reconozca todas las librerías instaladas:
 1. Presiona `Ctrl + Shift + P` en VS Code para abrir la paleta de comandos.
 2. Escribe y selecciona: `Python: Select Interpreter`.
-3. Elige el intérprete del entorno virtual recién creado:
+3. Selecciona el intérprete del entorno virtual:
    ```text
-   .\venv\Scripts\python.exe  (en Windows)
-   ./venv/bin/python          (en Linux/macOS)
+   .\venv\Scripts\python.exe
    ```
 
 ---
 
-### Paso 5: Instalar las Dependencias del Proyecto
-Con el entorno virtual activado, instala todos los paquetes necesarios ejecutando:
-```bash
-pip install --upgrade pip
+### Paso 5: Instalar las Dependencias
+Con el entorno `(venv)` activado, actualiza `pip` e instala las dependencias del archivo `requirements.txt`:
+
+```powershell
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
 ---
 
-### Paso 6: Configurar Variables de Entorno (`.env`)
-El proyecto incluye la plantilla `.env.example`. Crea tu archivo `.env` local a partir de ella:
+### Paso 6: Configurar Variables de Entorno para Modo Local (`.env`)
+El proyecto incluye la plantilla `.env.example`. Crea tu archivo `.env` ejecutando:
 
-**En Windows (PowerShell):**
 ```powershell
 Copy-Item .env.example .env
-```
-
-**En Linux / macOS:**
-```bash
-cp .env.example .env
 ```
 
 Abre el archivo `.env` en VS Code y confirma que la primera línea tenga:
 ```ini
 PIPELINE_ENV=local
 ```
-*(Para pruebas locales no necesitas credenciales de AWS ni configurar endpoints en la nube).*
+*(En modo `local`, el pipeline no requiere credenciales de AWS ni conectarse a internet; procesa todo en las carpetas de tu disco).*
 
 ---
 
 ### Paso 7: Prueba 1 - Ejecutar las Pruebas Unitarias Automatizadas
-Esta prueba valida de inmediato toda la lógica interna sin necesidad de servicios externos:
-```bash
+Ejecuta la suite completa de pruebas para verificar que toda la lógica de hashing, geografía, epidemiología y configuración funcione correctamente:
+
+```powershell
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
-*(O simplemente ejecuta `pytest -q` si tienes pytest instalado).*
+
+*(O `pytest -q` si prefieres el reporte resumido de pytest).*
 
 **Qué valida esta prueba:**
-* **Criptografía:** Cálculo exacto del hash SHA-256 para archivos.
-* **Geografía:** Estandarización y padding a 6 dígitos de Ubigeos (filtrando departamento 13 La Libertad).
-* **Epidemiología:** Reglas MINSA/SENAMHI para asignación de semanas epidemiológicas según estándar internacional.
+* **Criptografía:** Generación determinista y exacta del hash SHA-256 para archivos crudos.
+* **Geografía:** Normalización y padding a 6 dígitos de Ubigeos, identificando correctamente el departamento 13 (La Libertad).
+* **Epidemiología:** Reglas de asignación de semanas epidemiológicas de MINSA/SENAMHI según estándar internacional.
 * **Serving y Mocks AWS:** Esquema relacional DDL (tablas dimensionales y tabla `lotes`), y mocks para Boto3 y PostgreSQL.
 
 **Resultado esperado:**
 ```text
 Ran 34 tests ... OK (skipped=5)
 ```
-*(Las 5 pruebas en 'skipped' corresponden únicamente a tests de integración con clúster PySpark que se ejecutan cuando Spark está levantado).*
+*(Las 5 pruebas en 'skipped' corresponden a tests de integración con clúster PySpark que requieren el runtime de Java levantado).*
 
 ---
 
-### Paso 8: Prueba 2 - Ingesta Cruda Bronze y Control de Idempotencia (SHA-256)
-Ejecuta la primera fase del pipeline para ingerir los datasets de IRA, Malaria y SENAMHI incluidos en el proyecto hacia la capa Bronze:
+### Paso 8: Prueba 2 - Ingesta Cruda Bronze y Verificación de Idempotencia (SHA-256)
+Ejecuta la primera fase del pipeline para ingerir los datasets crudos hacia la capa Bronze:
 
-```bash
+```powershell
 python -m src.orchestration.run_pipeline --ingest
 ```
 
 **Qué sucede durante la ejecución:**
-1. El sistema ubica los archivos de datos en `data/processed/` o `data/raw/`.
-2. Calcula el hash criptográfico SHA-256 de cada archivo.
-3. Copia cada archivo a la partición Bronze correspondiente:
+1. El sistema lee los archivos CSV fuente en `data/processed/` o `data/raw/`.
+2. Calcula el hash criptográfico SHA-256 de cada dataset.
+3. Copia los archivos a la partición Bronze correspondiente:
    * `data/raw/ira/fecha_ingesta=YYYY-MM-DD/`
    * `data/raw/malaria/fecha_ingesta=YYYY-MM-DD/`
    * `data/raw/senamhi/fecha_ingesta=YYYY-MM-DD/`
-4. Registra los metadatos y el hash en el archivo de control local `data/control/batch_control.json`.
+4. Registra los metadatos y el hash en el archivo de auditoría local `data/control/batch_control.json`.
 
-**Prueba de Idempotencia (Detección de Duplicados):**
-Vuelve a ejecutar el mismo comando:
-```bash
+**Demostración de Idempotencia (Detección de Duplicados):**  
+Vuelve a ejecutar exactamente el mismo comando:
+```powershell
 python -m src.orchestration.run_pipeline --ingest
 ```
-Verás que el sistema detecta que los hashes ya fueron procesados y emite advertencias como:
-`El archivo ya fue ingerido y procesado previamente con hash SHA-256... Omitiendo carga.`
-Esto demuestra que el sistema previene reprocesamientos accidentales y duplicación de datos.
+Verás que el sistema detecta que los hashes SHA-256 ya fueron registrados y emite mensajes informativos:
+> `El archivo ya fue ingerido y procesado previamente con hash SHA-256... Omitiendo carga (SKIPPED_DUPLICATE).`  
+Esto demuestra que el pipeline es idempotente: no duplica datos ni corrompe el historial si un lote se reenvía por error.
 
-*(Si en algún momento deseas forzar la reingesta, puedes usar `python -m src.orchestration.run_pipeline --ingest --force`).*
+*(Si en algún momento deseas forzar la reingesta, puedes añadir la bandera `--force`: `python -m src.orchestration.run_pipeline --ingest --force`).*
 
 ---
 
-### Paso 9: Prueba 3 - Limpieza Silver en PySpark (Parquet Particionado por Año)
-Ejecuta la limpieza y tipado estricto con PySpark:
-```bash
+### Paso 9: Prueba 3 - Limpieza y Capa Silver en PySpark
+Ejecuta la limpieza, tipado estricto y deduplicación con Apache Spark:
+
+```powershell
 python -m src.orchestration.run_pipeline --silver
 ```
-* **Qué hace:** Filtra los registros estrictamente para La Libertad (departamento 13) y el periodo común (2015-2024), aplica protección de celdas pequeñas para privacidad de salud pública y escribe archivos **Parquet particionados por año (`Ano=YYYY`)** mediante sobreescritura dinámica (*dynamic partition overwrite*).
-* **Dónde verificar:** Revisa las carpetas generadas en `data/processed/ira/`, `data/processed/malaria/` y `data/processed/senamhi/`.
+
+**Qué realiza esta etapa:**
+* Filtra estrictamente los registros correspondientes al departamento de La Libertad (código Ubigeo que inicia en `13`).
+* Aplica el rango de tiempo del periodo común (2015 al 30/06/2024).
+* Aplica la regla de protección de celdas pequeñas para privacidad en salud pública.
+* Escribe los datos limpios en formato **Parquet particionado por año (`Ano=YYYY`)** usando sobreescritura dinámica de particiones.
+* **Dónde verificar:** Revisa las carpetas creadas en `data/processed/ira/`, `data/processed/malaria/` y `data/processed/senamhi/`.
 
 ---
 
 ### Paso 10: Prueba 4 - Integración Dimensional y Lags Temporales (Capa Gold)
-Ejecuta la consolidación analítica:
-```bash
+Ejecuta la consolidación analítica y de ingeniería de características:
+
+```powershell
 python -m src.orchestration.run_pipeline --gold
 ```
-* **Qué hace:**
-  1. Agrega las observaciones climáticas diarias de SENAMHI a nivel de semana epidemiológica.
-  2. Calcula variables rezagadas (*lags*) de 1 a 3 semanas (temperatura media, precipitación y casos de IRA previos) para modelar el retraso biológico en la transmisión.
-  3. Genera las tablas del esquema en estrella: `dim_ubigeo`, `dim_tiempo`, `fact_vigilancia` y el dataset consolidado de modelado `features_ml`.
-* **Dónde verificar:** Revisa los directorios Parquet en `data/curated/epidemiologia_clima/`.
+
+**Qué realiza esta etapa:**
+1. Agrega las observaciones climáticas diarias de SENAMHI (temperatura, humedad y precipitación) a nivel de semana epidemiológica por distrito.
+2. Calcula variables con rezago temporal (*lags* de 1 a 3 semanas) para temperatura media, precipitación y casos de IRA previos, capturando el retardo biológico de incubación y transmisión.
+3. Genera las tablas del modelo dimensional en estrella: `dim_ubigeo`, `dim_tiempo`, `fact_vigilancia` y el dataset consolidado de modelado `features_ml`.
+* **Dónde verificar:** Revisa los directorios Parquet generados en `data/curated/epidemiologia_clima/`.
 
 ---
 
 ### Paso 11: Prueba 5 - Modelado Predictivo con Spark MLlib vs Baseline
 Ejecuta el entrenamiento e inferencia predictiva:
-```bash
+
+```powershell
 python -m src.orchestration.run_pipeline --model
 ```
-* **Qué hace:**
-  1. Divide los datos respetando la línea temporal: Entrenamiento (2015-2022) y Prueba (2023-2024).
-  2. Entrena un modelo Random Forest Regressor de Spark MLlib para predecir casos de IRA.
-  3. Compara sus métricas (**RMSE, MAE y $R^2$**) contra un **baseline de persistencia** ($y_t = y_{t-1}$).
-  4. Serializa el pipeline entrenado y guarda las predicciones con sus residuos.
+
+**Qué realiza esta etapa:**
+1. Divide el dataset respetando la serie temporal: Entrenamiento (2015 a 2022) y Evaluación/Prueba (2023 a 2024).
+2. Entrena un modelo predictivo con Spark MLlib (Random Forest Regressor) para estimar los casos semanales de IRA.
+3. Compara objetivamente las métricas de error (**RMSE, MAE y $R^2$**) del modelo frente a un **baseline de persistencia** ($y_t = y_{t-1}$).
+4. Serializa el pipeline entrenado y guarda las predicciones con sus residuos.
 * **Dónde verificar:**
-  * Métricas de evaluación: Abre `results/estadisticas/metricas_evaluacion.json`.
-  * Modelo serializado: Consulta la carpeta `results/modelos/rf_ira_model/`.
+  * Métricas de evaluación: Abre el archivo JSON `results/estadisticas/metricas_evaluacion.json`.
+  * Modelo exportado: Revisa la carpeta `results/modelos/rf_ira_model/`.
 
 ---
 
-### Paso 12: Prueba 6 - Ejecución de Inicio a Fin en un Solo Comando
-Si deseas correr todas las etapas consecutivas en un único flujo local automatizado:
-```bash
+### Paso 12: Prueba 6 - Ejecución Integral de Inicio a Fin
+Si deseas ejecutar todas las fases anteriores de forma continua en una sola ejecución local:
+
+```powershell
 python -m src.orchestration.run_pipeline --all
 ```
 
 ---
 
-### Paso 13: Solución de Problemas Comunes en Modo Local
+### Paso 13: Solución de Problemas Comunes en Windows
 
-* **Error `JAVA_HOME is not set`:**
-  Apache Spark requiere Java JDK 11 o 17. Descarga OpenJDK 11 o 17, instálalo y configura tu variable de entorno en Windows:
+* **Error `""D:\VII" no se reconoce como un comando interno o externo"` al ejecutar PySpark:**  
+  *Causa:* La ruta de tu carpeta contiene el símbolo `&`.  
+  *Solución:* Monta la unidad virtual limpia ejecutando en PowerShell:
+  ```powershell
+  subst S: "D:\VII & VIII CICLO UPAO\BIG DATA\SISTEMA\Sistema_Predictivo_Big_Data"
+  cd S:\
+  ```
+  Y vuelve a correr el comando desde `S:\`.
+* **Error `JAVA_HOME is not set` o `Java gateway process exited before sending its port number`:**  
+  *Causa:* Falta instalar Java JDK o definir la variable `JAVA_HOME`.  
+  *Solución:* Instala JDK 11 o 17 (Eclipse Adoptium) y define la variable en tu terminal:
   ```powershell
   $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot"
   ```
-* **Error `No module named 'pyspark'` o similar:**
-  Asegúrate de haber activado el entorno virtual (`.\venv\Scripts\Activate.ps1`) y de haber ejecutado `pip install -r requirements.txt`.
-* **Reiniciar datos locales de prueba desde cero:**
-  Si deseas limpiar las pruebas y empezar de cero en local:
+* **Error `No se puede cargar el archivo Activate.ps1 porque la ejecución de scripts está deshabilitada`:**  
+  *Causa:* Restricción de políticas de seguridad por defecto de Windows PowerShell.  
+  *Solución:* Ejecuta una sola vez en PowerShell:
+  ```powershell
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  ```
+* **Reiniciar datos locales de prueba para volver a empezar desde cero:**  
+  Si deseas limpiar los datos generados durante las pruebas locales y volver a probar la ingesta cruda:
   ```powershell
   Remove-Item -Recurse -Force data\raw\*\fecha_ingesta=* -ErrorAction SilentlyContinue
   Remove-Item data\control\batch_control.json -ErrorAction SilentlyContinue
