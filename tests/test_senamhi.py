@@ -4,10 +4,12 @@ Valida construcción de fecha y semana epidemiológica, filtros de consistencia 
 (PP >= 0, Tmin <= Tmax) y deduplicación por Estación + Fecha.
 """
 
+from datetime import date
 import unittest
 
+from tests.spark_support import create_test_spark_session
+
 try:
-    from pyspark.sql import SparkSession
     from pyspark.sql.types import (
         StructType,
         StructField,
@@ -25,23 +27,8 @@ except ImportError:
 class TestLimpiezaSENAMHI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            cls.spark = (
-                SparkSession.builder
-                .appName("Test_Limpieza_SENAMHI")
-                .master("local[1]")
-                .config("spark.driver.memory", "1g")
-                .config("spark.sql.shuffle.partitions", "1")
-                .getOrCreate()
-            )
-            cls.spark.sparkContext.setLogLevel("ERROR")
-        except Exception as e:
-            raise unittest.SkipTest(f"Java Gateway de PySpark no pudo inicializarse: {e}")
-
-    @classmethod
-    def tearDownClass(cls):
-        if hasattr(cls, "spark") and cls.spark:
-            cls.spark.stop()
+        cls.spark = create_test_spark_session("Test_Limpieza_SENAMHI")
+        cls.addClassCleanup(cls.spark.stop)
 
     def test_transformar_datos_senamhi_rangos_fisicos_y_fecha(self):
         """Verifica construcción de fecha, consistencia física y filtros."""
@@ -76,8 +63,8 @@ class TestLimpiezaSENAMHI(unittest.TestCase):
         # Solo debe quedar 1 registro válido
         self.assertEqual(df_out.count(), 1)
         row = df_out.first()
-        self.assertEqual(row["fecha"], "2021-05-10")
-        self.assertEqual(row["ano_epi"], 2021)
+        self.assertEqual(row["Fecha"], date(2021, 5, 10))
+        self.assertEqual(row["Semana_Epidemiologica"], 19)
         # Validar consistencia
         self.assertLessEqual(row["Temperatura_minima"], row["Temperatura_maxima"])
         self.assertGreaterEqual(row["Precipitacion_acumulada"], 0.0)

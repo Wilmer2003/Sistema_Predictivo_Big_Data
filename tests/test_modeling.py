@@ -5,11 +5,12 @@ baseline de persistencia y división temporal.
 """
 
 import unittest
+
+from tests.spark_support import create_test_spark_session
 from src.modeling.pipeline import DEFAULT_FEATURE_COLS, TARGET_COL_IRA, TARGET_COL_MALARIA
 from src.modeling.baseline import calcular_metricas_pure_python
 
 try:
-    from pyspark.sql import SparkSession
     from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
     from src.modeling.pipeline import construir_pipeline_mllib
     from src.modeling.train import division_temporal_train_test
@@ -55,23 +56,8 @@ class TestModelingLogica(unittest.TestCase):
 class TestModelingPySpark(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            cls.spark = (
-                SparkSession.builder
-                .appName("Test_Modeling")
-                .master("local[1]")
-                .config("spark.driver.memory", "1g")
-                .config("spark.sql.shuffle.partitions", "1")
-                .getOrCreate()
-            )
-            cls.spark.sparkContext.setLogLevel("ERROR")
-        except Exception as e:
-            raise unittest.SkipTest(f"Java Gateway de PySpark no pudo inicializarse: {e}")
-
-    @classmethod
-    def tearDownClass(cls):
-        if hasattr(cls, "spark") and cls.spark:
-            cls.spark.stop()
+        cls.spark = create_test_spark_session("Test_Modeling")
+        cls.addClassCleanup(cls.spark.stop)
 
     def test_division_temporal_train_test(self):
         """Verifica que la división temporal separe estrictamente por año."""

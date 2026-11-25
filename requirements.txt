@@ -1,5 +1,6 @@
 # Dependencias principales del Sistema Predictivo Big Data (AWS / Local)
-pyspark==3.5.3
+pyspark==3.5.9; sys_platform == "win32"
+pyspark==3.5.3; sys_platform != "win32"
 pyarrow>=15.0.0
 pandas>=2.1.0
 python-dotenv>=1.0.1

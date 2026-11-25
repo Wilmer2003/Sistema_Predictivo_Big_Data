@@ -6,8 +6,9 @@ protección de datos sensibles (celdas pequeñas) y deduplicación.
 
 import unittest
 
+from tests.spark_support import create_test_spark_session
+
 try:
-    from pyspark.sql import SparkSession
     from pyspark.sql.types import (
         StructType,
         StructField,
@@ -24,23 +25,8 @@ except ImportError:
 class TestLimpiezaIRA(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            cls.spark = (
-                SparkSession.builder
-                .appName("Test_Limpieza_IRA")
-                .master("local[1]")
-                .config("spark.driver.memory", "1g")
-                .config("spark.sql.shuffle.partitions", "1")
-                .getOrCreate()
-            )
-            cls.spark.sparkContext.setLogLevel("ERROR")
-        except Exception as e:
-            raise unittest.SkipTest(f"Java Gateway de PySpark no pudo inicializarse: {e}")
-
-    @classmethod
-    def tearDownClass(cls):
-        if hasattr(cls, "spark") and cls.spark:
-            cls.spark.stop()
+        cls.spark = create_test_spark_session("Test_Limpieza_IRA")
+        cls.addClassCleanup(cls.spark.stop)
 
     def test_transformar_datos_ira_filtros_y_proteccion(self):
         """Verifica filtros de La Libertad (13), años 2015-2024 y bandeo de celdas pequeñas."""

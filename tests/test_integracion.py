@@ -6,10 +6,11 @@ y construcción del modelo dimensional.
 
 import unittest
 
+from tests.spark_support import create_test_spark_session
+
 from src.integration.dimensional_model import ESTACION_UBIGEO_MAP
 
 try:
-    from pyspark.sql import SparkSession
     from pyspark.sql.types import (
         StructType,
         StructField,
@@ -48,23 +49,8 @@ class TestIntegracionLogica(unittest.TestCase):
 class TestIntegracionPySpark(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            cls.spark = (
-                SparkSession.builder
-                .appName("Test_Integracion_Gold")
-                .master("local[1]")
-                .config("spark.driver.memory", "1g")
-                .config("spark.sql.shuffle.partitions", "1")
-                .getOrCreate()
-            )
-            cls.spark.sparkContext.setLogLevel("ERROR")
-        except Exception as e:
-            raise unittest.SkipTest(f"Java Gateway de PySpark no pudo inicializarse: {e}")
-
-    @classmethod
-    def tearDownClass(cls):
-        if hasattr(cls, "spark") and cls.spark:
-            cls.spark.stop()
+        cls.spark = create_test_spark_session("Test_Integracion_Gold")
+        cls.addClassCleanup(cls.spark.stop)
 
     def test_lags_temporales_calculation(self):
         """Verifica que el cálculo de lags desplace correctamente los valores por semana."""

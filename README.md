@@ -197,6 +197,10 @@ Ejecuta la suite completa de pruebas para verificar que toda la lógica de hashi
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
+En Windows, `requirements.txt` instala PySpark 3.5.9, que corrige el cierre inesperado de los workers con Python 3.12. Si Spark detecta la ruta original al usar la unidad `S:\`, configura `SPARK_HOME=S:/venv/Lib/site-packages/pyspark` y `PYSPARK_PYTHON=S:/venv/Scripts/python.exe` en `.env`.
+
+Las pruebas de Spark ejecutan transformaciones en memoria. Para operaciones nativas de Hadoop, define `HADOOP_HOME` en `.env` con la ruta raíz de una distribución compatible que incluya `bin/winutils.exe` y `bin/hadoop.dll`. Spark detecta también `hadoop/bin/winutils.exe` dentro del repositorio.
+
 *(O `pytest -q` si prefieres el reporte resumido de pytest).*
 
 **Qué valida esta prueba:**

@@ -6,8 +6,9 @@ diagnósticos B50/B51 y deduplicación.
 
 import unittest
 
+from tests.spark_support import create_test_spark_session
+
 try:
-    from pyspark.sql import SparkSession
     from pyspark.sql.types import (
         StructType,
         StructField,
@@ -24,23 +25,8 @@ except ImportError:
 class TestLimpiezaMalaria(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        try:
-            cls.spark = (
-                SparkSession.builder
-                .appName("Test_Limpieza_Malaria")
-                .master("local[1]")
-                .config("spark.driver.memory", "1g")
-                .config("spark.sql.shuffle.partitions", "1")
-                .getOrCreate()
-            )
-            cls.spark.sparkContext.setLogLevel("ERROR")
-        except Exception as e:
-            raise unittest.SkipTest(f"Java Gateway de PySpark no pudo inicializarse: {e}")
-
-    @classmethod
-    def tearDownClass(cls):
-        if hasattr(cls, "spark") and cls.spark:
-            cls.spark.stop()
+        cls.spark = create_test_spark_session("Test_Limpieza_Malaria")
+        cls.addClassCleanup(cls.spark.stop)
 
     def test_transformar_datos_malaria_filtros(self):
         """Verifica filtros de diagnósticos B50/B51, La Libertad y deduplicación."""
@@ -54,7 +40,7 @@ class TestLimpiezaMalaria(unittest.TestCase):
             StructField("semana", IntegerType(), True),
             StructField("ubigeo", StringType(), True),
             StructField("localcod", StringType(), True),
-            StructField("diagnostico", StringType(), True),
+            StructField("diagnostic", StringType(), True),
             StructField("edad", IntegerType(), True),
             StructField("tipo_edad", StringType(), True),
             StructField("sexo", StringType(), True),
@@ -80,7 +66,7 @@ class TestLimpiezaMalaria(unittest.TestCase):
         self.assertEqual(df_out.count(), 2)
 
         # Validar diagnósticos resultantes
-        diagnosticos = [r["diagnostico"] for r in df_out.select("diagnostico").collect()]
+        diagnosticos = [r["diagnostic"] for r in df_out.select("diagnostic").collect()]
         self.assertIn("B50", diagnosticos)
         self.assertIn("B51", diagnosticos)
         self.assertNotIn("B52", diagnosticos)
