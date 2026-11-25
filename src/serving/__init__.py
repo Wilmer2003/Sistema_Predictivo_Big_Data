@@ -1,6 +1,6 @@
 """
 Módulo de Serving (src.serving).
-Responsable del despliegue del modelo dimensional en Cloud SQL para PostgreSQL / Local
+Responsable del despliegue del modelo dimensional en Amazon RDS PostgreSQL / Local
 y la carga de tablas Gold para consumo en tableros de Power BI.
 """
 

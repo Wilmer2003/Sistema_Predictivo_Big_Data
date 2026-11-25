@@ -1,7 +1,7 @@
 """
 Pruebas Unitarias para el Módulo de Ingesta (src/ingestion/).
 Cubre cálculo de SHA-256, gestión de lotes (BatchControlManager) e ingesta cruda idempotente
-tanto en modo Local como en Google Cloud Platform (GCS / Cloud SQL tabla lotes con mocks).
+tanto en modo Local como en Amazon Web Services (S3 / Amazon RDS tabla lotes y Amazon EMR con mocks).
 Compatible tanto con 'pytest' como con 'python -m unittest'.
 """
 
@@ -14,24 +14,9 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-# Asegurar módulos mock para Google Cloud si las librerías no están instaladas en el host
-if "google" not in sys.modules:
-    sys.modules["google"] = MagicMock()
-if "google.cloud" not in sys.modules:
-    sys.modules["google.cloud"] = MagicMock()
-    sys.modules["google"].cloud = sys.modules["google.cloud"]
-if "google.cloud.storage" not in sys.modules:
-    _mock_storage = MagicMock()
-    sys.modules["google.cloud.storage"] = _mock_storage
-    sys.modules["google.cloud"].storage = _mock_storage
-if "google.cloud.dataproc_v1" not in sys.modules:
-    _mock_dp = MagicMock()
-    _mock_state = MagicMock()
-    _mock_state.DONE = MagicMock()
-    _mock_state.DONE.name = "DONE"
-    _mock_dp.JobStatus.State = _mock_state
-    sys.modules["google.cloud.dataproc_v1"] = _mock_dp
-    sys.modules["google.cloud"].dataproc_v1 = _mock_dp
+# Asegurar módulo mock para boto3 si no está instalado en el entorno del host
+if "boto3" not in sys.modules:
+    sys.modules["boto3"] = MagicMock()
 
 from src.common.config import AppConfig, PostgresConfig
 from src.ingestion.batch_manager import (
@@ -40,7 +25,7 @@ from src.ingestion.batch_manager import (
     calculate_file_sha256,
 )
 from src.ingestion.raw_ingestor import ingest_raw_file
-from src.orchestration.run_pipeline import lanzar_job_dataproc
+from src.orchestration.run_pipeline import lanzar_step_emr
 
 
 class TestIngestion(unittest.TestCase):
@@ -160,22 +145,18 @@ class TestIngestion(unittest.TestCase):
                 config=self.cfg,
             )
 
-    def test_ingest_raw_file_gcp_mock(self):
-        """Verifica que en modo GCP la ingesta apunte a gs:// y suba el blob a Google Cloud Storage."""
-        gcp_cfg = AppConfig(
-            env="gcp",
-            gcs_bucket="bucket-gcp-test",
-            gcp_project_id="proyecto-gcp",
+    def test_ingest_raw_file_aws_mock(self):
+        """Verifica que en modo AWS la ingesta apunte a s3:// y suba el archivo con boto3."""
+        aws_cfg = AppConfig(
+            env="aws",
+            s3_bucket="bucket-aws-test",
+            aws_region="us-east-1",
         )
 
-        mock_storage_client = MagicMock()
-        mock_bucket = MagicMock()
-        mock_blob = MagicMock()
-        mock_storage_client.bucket.return_value = mock_bucket
-        mock_bucket.blob.return_value = mock_blob
+        mock_s3_client = MagicMock()
 
-        # Mockear storage.Client de Google Cloud y _get_db_connection
-        with patch("google.cloud.storage.Client", return_value=mock_storage_client):
+        import boto3
+        with patch.object(boto3, "client", return_value=mock_s3_client):
             with patch.object(BatchControlManager, "_get_db_connection") as mock_conn:
                 mock_cursor = MagicMock()
                 mock_conn.return_value.cursor.return_value.__enter__.return_value = mock_cursor
@@ -185,33 +166,33 @@ class TestIngestion(unittest.TestCase):
                     file_path=self.sample_csv_path,
                     source="senamhi",
                     force=False,
-                    config=gcp_cfg,
+                    config=aws_cfg,
                 )
 
                 self.assertTrue(exito)
                 self.assertIsNotNone(meta)
-                self.assertTrue(meta.destination_path.startswith("gs://bucket-gcp-test/bronze/senamhi/"))
+                self.assertTrue(meta.destination_path.startswith("s3://bucket-aws-test/bronze/senamhi/"))
                 self.assertEqual(estado, "INGESTED")
-                mock_blob.upload_from_filename.assert_called_once()
+                mock_s3_client.upload_file.assert_called_once()
 
-    def test_batch_control_manager_gcp_table_mock(self):
-        """Verifica la persistencia en la tabla 'lotes' de Cloud SQL en modo GCP con mock de psycopg2."""
-        gcp_cfg = AppConfig(
-            env="gcp",
-            gcs_bucket="bucket-test",
-            gcp_project_id="proyecto-test",
+    def test_batch_control_manager_aws_table_mock(self):
+        """Verifica la persistencia en la tabla 'lotes' de Amazon RDS en modo AWS con mock de psycopg2."""
+        aws_cfg = AppConfig(
+            env="aws",
+            s3_bucket="bucket-test",
+            aws_region="us-east-1",
         )
 
-        mgr = BatchControlManager(config=gcp_cfg)
+        mgr = BatchControlManager(config=aws_cfg)
         meta = BatchMetadata(
-            batch_id="malaria_gcp_01",
+            batch_id="malaria_aws_01",
             source="malaria",
             file_name="malaria.csv",
             file_hash="hash123456",
             file_size_bytes=1000,
             load_date="2024-05-01",
             ingest_timestamp="2024-05-01T12:00:00Z",
-            destination_path="gs://bucket-test/bronze/malaria/malaria.csv",
+            destination_path="s3://bucket-test/bronze/malaria/malaria.csv",
             status="REGISTERED",
         )
 
@@ -233,33 +214,33 @@ class TestIngestion(unittest.TestCase):
             updated = mgr.update_batch_status("hash123456", "PROCESSED_SILVER")
             self.assertTrue(updated)
 
-    def test_lanzar_job_dataproc_mock(self):
-        """Verifica el despacho de jobs a Dataproc con mock de JobControllerClient."""
-        gcp_cfg = AppConfig(
-            env="gcp",
-            gcs_bucket="bucket-test",
-            gcp_project_id="proyecto-test",
-            gcp_region="us-central1",
-            dataproc_cluster_name="cluster-test",
+    def test_lanzar_step_emr_mock(self):
+        """Verifica el despacho de pasos a Amazon EMR con mock de boto3 client."""
+        aws_cfg = AppConfig(
+            env="aws",
+            s3_bucket="bucket-test",
+            aws_region="us-east-1",
+            emr_cluster_id="j-123456789",
         )
 
-        mock_job_client = MagicMock()
-        mock_operation = MagicMock()
-        mock_response = MagicMock()
-        # Mock estado final DONE
-        from google.cloud import dataproc_v1 as dataproc
-        mock_response.status.state = dataproc.JobStatus.State.DONE
-        mock_operation.result.return_value = mock_response
-        mock_job_client.submit_job_as_operation.return_value = mock_operation
+        mock_emr_client = MagicMock()
+        mock_emr_client.add_job_flow_steps.return_value = {"StepIds": ["s-123456"]}
+        mock_emr_client.describe_step.return_value = {
+            "Step": {"Status": {"State": "COMPLETED"}}
+        }
 
-        with patch("google.cloud.dataproc_v1.JobControllerClient", return_value=mock_job_client):
-            resultado = lanzar_job_dataproc(
-                main_python_file_uri="gs://bucket-test/scripts/run_pipeline.py",
-                job_args=["--silver", "--gold"],
-                config=gcp_cfg,
+        import boto3
+        with patch.object(boto3, "client", return_value=mock_emr_client):
+            resultado = lanzar_step_emr(
+                script_s3_uri="s3://bucket-test/scripts/run_pipeline.py",
+                step_args=["--silver", "--gold"],
+                config=aws_cfg,
             )
             self.assertTrue(resultado)
-            mock_job_client.submit_job_as_operation.assert_called_once()
+            mock_emr_client.add_job_flow_steps.assert_called_once()
+            mock_emr_client.describe_step.assert_called_once_with(
+                ClusterId="j-123456789", StepId="s-123456"
+            )
 
 
 if __name__ == "__main__":

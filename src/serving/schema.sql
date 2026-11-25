@@ -1,9 +1,9 @@
 -- ==============================================================================
--- SISTEMA PREDICTIVO BIG DATA - ESQUEMA RELACIONAL (GOOGLE CLOUD SQL / LOCAL)
+-- SISTEMA PREDICTIVO BIG DATA - ESQUEMA RELACIONAL (AMAZON RDS POSTGRESQL / LOCAL)
 -- Modelo dimensional optimizado para BI (Power BI), predicciones y control de lotes
 -- ==============================================================================
 
--- 0. Tabla de Control de Lotes (Auditoría e Idempotencia en Cloud SQL)
+-- 0. Tabla de Control de Lotes (Auditoría e Idempotencia en Amazon RDS PostgreSQL)
 CREATE TABLE IF NOT EXISTS lotes (
     batch_id VARCHAR(100) PRIMARY KEY,
     source VARCHAR(50) NOT NULL,

@@ -1,22 +1,21 @@
 # Conexión y Visualización en Power BI Desktop
 
-Este directorio contiene las especificaciones y guía de conexión para los tableros de control de **Power BI Desktop** del Sistema Predictivo Big Data (La Libertad) desplegado en **Google Cloud (Cloud SQL)** o en entorno Local.
+Este directorio contiene las especificaciones y guía de conexión para los tableros de control de **Power BI Desktop** del Sistema Predictivo Big Data (La Libertad) desplegado en **Amazon Web Services (Amazon RDS PostgreSQL)** o en entorno Local.
 
 ---
 
 ## 1. Opciones de Conexión
 
-### Opción A: Conexión a Cloud SQL para PostgreSQL en Google Cloud (Producción)
-Tal como se describe en el diagrama de arquitectura, Power BI se conecta a la instancia gestionada de **Cloud SQL para PostgreSQL** a través del puerto 5432 (redes autorizadas):
+### Opción A: Conexión a Amazon RDS PostgreSQL en AWS (Producción)
+Tal como se describe en el diagrama de arquitectura, Power BI se conecta a la instancia administrada de **Amazon RDS PostgreSQL** a través del puerto 5432 (vía VPN o Security Group / ruta de red autorizada):
 
-1. **Requisito previo en Google Cloud Console**:
-   * Ir a la instancia de **Cloud SQL** -> **Conexiones** -> **Seguridad / Redes autorizadas**.
-   * Agregar la dirección IP pública de la laptop del equipo para permitir tráfico entrante por el puerto `5432`.
+1. **Requisito previo en AWS Console**:
+   * En la VPC de la instancia de **Amazon RDS PostgreSQL**, asegurar que el **Security Group** de entrada permita el tráfico por el puerto `5432` desde la IP pública autorizada del equipo o mediante conexión VPN corporativa/privada.
 2. **Abrir Power BI Desktop**:
    * Seleccionar **Obtener datos** -> **Base de datos PostgreSQL**.
-   * **Servidor:** `<IP_PUBLICA_CLOUD_SQL>:5432` (o `localhost:5432` en local).
+   * **Servidor:** `<ENDPOINT_RDS>:5432` (o `localhost:5432` en entorno local).
    * **Base de datos:** `epidemiologia_db`.
-   * **Modo de conectividad:** `DirectQuery` (para ver los datos y estado del pipeline en vivo) o `Importar` (con actualización programada).
+   * **Modo de conectividad:** `DirectQuery` (para visualizar en tiempo real datos y estado del pipeline) o `Importar` (con actualización periódica programada).
    * **Credenciales:** Usuario `postgres` y contraseña configurada en `.env`.
 3. **Seleccionar las tablas del modelo**:
    * `dim_ubigeo`: Dimensión geográfica de distritos de La Libertad y presencia de estaciones SENAMHI.

@@ -1,8 +1,8 @@
 """
 Orquestador Principal End-to-End del Pipeline Medallion.
 Coordina el flujo completo: Bronze (Ingesta) -> Silver (Limpieza) ->
-Gold (Integración & Features) -> Modelo (MLlib) -> Serving (Cloud SQL / PostgreSQL).
-Soporta ejecución local y lanzamiento de jobs sobre Google Cloud Dataproc.
+Gold (Integración & Features) -> Modelo (MLlib) -> Serving (Amazon RDS / PostgreSQL).
+Soporta ejecución local y lanzamiento de pasos sobre Amazon EMR (Spark en YARN).
 """
 
 import argparse
@@ -15,63 +15,72 @@ from src.common.logger import get_logger
 logger = get_logger("Orquestador_Pipeline")
 
 
-def lanzar_job_dataproc(
-    main_python_file_uri: str,
-    job_args: Optional[List[str]] = None,
+def lanzar_step_emr(
+    script_s3_uri: str,
+    step_args: Optional[List[str]] = None,
+    step_name: str = "Pipeline_Predictivo_Step",
     config: Optional[AppConfig] = None,
 ) -> bool:
     """
-    Envía un trabajo PySpark al clúster de Google Cloud Dataproc (imagen 2.2 / Spark 3.5.3)
-    mediante la API de Dataproc (JobControllerClient).
+    Envía un paso PySpark al clúster de Amazon EMR (1 nodo primario + 2 core en YARN)
+    mediante la API de EMR (Boto3 add_job_flow_steps).
 
     Args:
-        main_python_file_uri: URI en GCS (gs://...) o ruta del script ejecutable.
-        job_args: Argumentos de línea de comandos para el script.
+        script_s3_uri: URI en Amazon S3 (s3://...) o ruta del script ejecutable.
+        step_args: Argumentos de línea de comandos para el script.
+        step_name: Nombre descriptivo del paso en EMR.
         config: Configuración de la aplicación (AppConfig).
 
     Returns:
-        bool: True si el job finalizó exitosamente en Dataproc, False en caso de error.
+        bool: True si el paso se ejecutó o registró exitosamente en EMR, False en caso de error.
     """
     cfg = config or get_config()
-    logger.info("Preparando envío de trabajo PySpark a Dataproc...")
-    logger.info("Proyecto: %s | Región: %s | Clúster: %s", cfg.gcp_project_id, cfg.gcp_region, cfg.dataproc_cluster_name)
+    logger.info("Preparando envío de paso PySpark a Amazon EMR...")
+    logger.info("Región: %s | Clúster EMR ID: %s", cfg.aws_region, cfg.emr_cluster_id)
 
     try:
-        from google.cloud import dataproc_v1 as dataproc
+        import boto3
 
-        endpoint = f"{cfg.gcp_region}-dataproc.googleapis.com:443"
-        job_client = dataproc.JobControllerClient(
-            client_options={"api_endpoint": endpoint}
-        )
+        emr_client = boto3.client("emr", region_name=cfg.aws_region)
 
-        job_payload = {
-            "placement": {"cluster_name": cfg.dataproc_cluster_name},
-            "pyspark_job": {
-                "main_python_file_uri": main_python_file_uri,
-                "args": job_args or [],
-                "properties": {
-                    "spark.jars.packages": "org.postgresql:postgresql:42.7.3",
-                    "spark.sql.sources.partitionOverwriteMode": "dynamic",
-                },
+        args = ["spark-submit", "--deploy-mode", "cluster"]
+        args.extend([
+            "--packages", "org.postgresql:postgresql:42.7.3",
+            "--conf", "spark.sql.sources.partitionOverwriteMode=dynamic",
+        ])
+        args.append(script_s3_uri)
+        if step_args:
+            args.extend(step_args)
+
+        step_config = {
+            "Name": step_name,
+            "ActionOnFailure": "CONTINUE",
+            "HadoopJarStep": {
+                "Jar": "command-runner.jar",
+                "Args": args,
             },
         }
 
-        logger.info("Enviando PySpark job a Dataproc...")
-        operation = job_client.submit_job_as_operation(
-            request={
-                "project_id": cfg.gcp_project_id,
-                "region": cfg.gcp_region,
-                "job": job_payload,
-            }
+        logger.info("Enviando paso PySpark al clúster EMR %s...", cfg.emr_cluster_id)
+        response = emr_client.add_job_flow_steps(
+            JobFlowId=cfg.emr_cluster_id,
+            Steps=[step_config],
         )
-        response = operation.result()
-        state = response.status.state
-        state_name = getattr(state, "name", str(state))
-        logger.info("Trabajo Dataproc finalizado con estado: %s", state_name)
-        return state == dataproc.JobStatus.State.DONE
+        step_ids = response.get("StepIds", [])
+        if not step_ids:
+            logger.error("No se obtuvo StepId de la respuesta de Amazon EMR.")
+            return False
+
+        step_id = step_ids[0]
+        logger.info("Paso registrado en EMR con StepId: %s. Verificando estado...", step_id)
+
+        desc = emr_client.describe_step(ClusterId=cfg.emr_cluster_id, StepId=step_id)
+        state = desc.get("Step", {}).get("Status", {}).get("State", "UNKNOWN")
+        logger.info("Estado del paso en EMR: %s", state)
+        return state in ("COMPLETED", "PENDING", "RUNNING")
 
     except Exception as e:
-        logger.error("Error al enviar o ejecutar el trabajo en Dataproc: %s", e)
+        logger.error("Error al enviar o ejecutar el paso en Amazon EMR: %s", e)
         return False
 
 
@@ -82,23 +91,23 @@ def ejecutar_pipeline_completo(
     run_model: bool = True,
     run_serving: bool = True,
     force_ingest: bool = False,
-    submit_to_dataproc: bool = False,
+    submit_to_emr: bool = False,
     config: Optional[AppConfig] = None,
 ) -> bool:
     """
     Ejecuta el pipeline de extremo a extremo respetando la arquitectura Medallion.
     En modo local ejecuta PySpark localmente.
-    En modo GCP desde la laptop, ingesta a GCS y puede despachar el cómputo hacia Dataproc.
+    En modo AWS desde la laptop, ingesta a Amazon S3 y puede despachar el cómputo hacia Amazon EMR.
     """
     cfg = config or get_config()
     logger.info("==================================================")
     logger.info("  INICIANDO EJECUCIÓN DEL PIPELINE PREDICTIVO")
-    logger.info("  Entorno: %s | Modo Google Cloud: %s", cfg.env, cfg.is_gcp)
+    logger.info("  Entorno: %s | Modo AWS: %s", cfg.env, cfg.is_aws)
     logger.info("==================================================")
 
     # --------------------------------------------------------------------------
     # FASE 1: BRONZE (Ingesta cruda con control SHA-256)
-    # En GCP sube a Cloud Storage (gs://) y registra en tabla 'lotes' de Cloud SQL
+    # En AWS sube a Amazon S3 (s3://) y registra en tabla 'lotes' de Amazon RDS
     # --------------------------------------------------------------------------
     if run_ingestion:
         from src.ingestion.cargar_ira import cargar_ira
@@ -110,12 +119,12 @@ def ejecutar_pipeline_completo(
         cargar_malaria(force=force_ingest)
         cargar_senamhi(force=force_ingest)
 
-    # Si se solicita despachar las fases de procesamiento Spark a Dataproc:
-    if cfg.is_gcp and submit_to_dataproc:
-        logger.info("\n--- [DESPACHANDO COMPUTO A DATAPROC CLUSTER] ---")
-        script_gcs = f"gs://{cfg.gcs_bucket}/scripts/run_pipeline.py"
-        args_dataproc = ["--silver", "--gold", "--model", "--serving"]
-        return lanzar_job_dataproc(script_gcs, job_args=args_dataproc, config=cfg)
+    # Si se solicita despachar las fases de procesamiento Spark a Amazon EMR:
+    if cfg.is_aws and submit_to_emr:
+        logger.info("\n--- [DESPACHANDO COMPUTO A AMAZON EMR CLUSTER] ---")
+        script_s3 = f"s3://{cfg.s3_bucket}/scripts/run_pipeline.py"
+        args_emr = ["--silver", "--gold", "--model", "--serving"]
+        return lanzar_step_emr(script_s3, step_args=args_emr, config=cfg)
 
     from src.common.spark_session import get_spark_session, stop_spark_session
 
@@ -159,12 +168,12 @@ def ejecutar_pipeline_completo(
             guardar_predicciones(preds, config=cfg)
 
         # ----------------------------------------------------------------------
-        # FASE 5: SERVING (Carga a Cloud SQL / PostgreSQL)
+        # FASE 5: SERVING (Carga a Amazon RDS / PostgreSQL)
         # ----------------------------------------------------------------------
         if run_serving:
             from src.serving.cargar_postgres import crear_tablas_postgres, cargar_capa_gold_a_postgres
 
-            logger.info("\n--- [FASE 5: SERVING - CLOUD SQL / POSTGRESQL] ---")
+            logger.info("\n--- [FASE 5: SERVING - AMAZON RDS / POSTGRESQL] ---")
             crear_tablas_postgres(config=cfg)
             cargar_capa_gold_a_postgres(spark=spark, config=cfg)
 
@@ -181,19 +190,19 @@ def ejecutar_pipeline_completo(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Orquestador del Sistema Predictivo Big Data (Google Cloud / Local).")
+    parser = argparse.ArgumentParser(description="Orquestador del Sistema Predictivo Big Data (Amazon Web Services / Local).")
     parser.add_argument("--all", action="store_true", help="Ejecutar todas las etapas de inicio a fin.")
     parser.add_argument("--ingest", action="store_true", help="Ejecutar solo ingesta Bronze.")
     parser.add_argument("--silver", action="store_true", help="Ejecutar solo limpieza Silver.")
     parser.add_argument("--gold", action="store_true", help="Ejecutar solo integración Gold.")
     parser.add_argument("--model", action="store_true", help="Ejecutar solo entrenamiento e inferencia ML.")
-    parser.add_argument("--serving", action="store_true", help="Ejecutar solo carga a Cloud SQL / PostgreSQL.")
+    parser.add_argument("--serving", action="store_true", help="Ejecutar solo carga a Amazon RDS / PostgreSQL.")
     parser.add_argument("--force", action="store_true", help="Forzar reingesta de archivos omitiendo SHA-256.")
-    parser.add_argument("--dataproc", action="store_true", help="Lanzar las fases de procesamiento Spark al clúster de Dataproc.")
+    parser.add_argument("--emr", action="store_true", help="Lanzar las fases de procesamiento Spark al clúster de Amazon EMR.")
     args = parser.parse_args()
 
     if not (args.ingest or args.silver or args.gold or args.model or args.serving):
-        exito = ejecutar_pipeline_completo(force_ingest=args.force, submit_to_dataproc=args.dataproc)
+        exito = ejecutar_pipeline_completo(force_ingest=args.force, submit_to_emr=args.emr)
     else:
         exito = ejecutar_pipeline_completo(
             run_ingestion=args.ingest or args.all,
@@ -202,7 +211,7 @@ def main():
             run_model=args.model or args.all,
             run_serving=args.serving or args.all,
             force_ingest=args.force,
-            submit_to_dataproc=args.dataproc,
+            submit_to_emr=args.emr,
         )
 
     sys.exit(0 if exito else 1)

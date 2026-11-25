@@ -5,14 +5,14 @@
 - Una rama por tarea, creada desde `main` actualizado, con este formato:
   - `feat/<area>-<descripcion>` para funcionalidad nueva (`feat/silver-clean-ira`)
   - `fix/<descripcion>` para correcciones
-  - `infra/<descripcion>` para Google Cloud y despliegue
+  - `infra/<descripcion>` para AWS y despliegue
   - `docs/<descripcion>` para documentación
   - `chore/<descripcion>` para orden y mantenimiento
 - Las ramas viven pocos días. Se borran al hacer merge.
 
 ## Commits
 Formato `tipo(area): mensaje corto`, en español:
-`feat(silver): limpieza de IRA como función`, `fix(config): ruta de GCS`, `docs(readme): estado del proyecto`, `test(epi-week): fechas de borde`.
+`feat(silver): limpieza de IRA como función`, `fix(config): ruta de S3`, `docs(readme): estado del proyecto`, `test(epi-week): fechas de borde`.
 
 ## Pull requests
 1. Actualiza tu rama con `main` antes de abrir el PR.

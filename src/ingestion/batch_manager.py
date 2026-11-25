@@ -1,7 +1,7 @@
 """
 Módulo de Gestión y Control de Lotes (Batch Control).
 Garantiza la idempotencia del pipeline mediante verificación de hash SHA-256.
-En modo local persiste en JSON; en modo GCP persiste en la tabla 'lotes' de Cloud SQL.
+En modo local persiste en JSON; en modo AWS persiste en la tabla 'lotes' de Amazon RDS PostgreSQL.
 """
 
 from dataclasses import dataclass, asdict
@@ -71,7 +71,7 @@ class BatchControlManager:
     Administrador del registro de control de lotes.
     Permite verificar la existencia previa de un hash SHA-256 y persistir
     el estado del procesamiento de cada archivo ingerido.
-    Soporta almacenamiento en archivo local JSON o en tabla 'lotes' de Cloud SQL PostgreSQL.
+    Soporta almacenamiento en archivo local JSON o en tabla 'lotes' de Amazon RDS PostgreSQL.
     """
 
     def __init__(self, config: Optional[AppConfig] = None):
@@ -80,18 +80,18 @@ class BatchControlManager:
         self._ensure_control_storage()
 
     def _ensure_control_storage(self) -> None:
-        """Asegura que el directorio y archivo de control existan si es local, o la tabla si es GCP."""
-        if not self.config.is_gcp:
+        """Asegura que el directorio y archivo de control existan si es local, o la tabla si es AWS."""
+        if not self.config.is_aws:
             p = Path(self.control_file_path)
             p.parent.mkdir(parents=True, exist_ok=True)
             if not p.exists():
                 with open(p, "w", encoding="utf-8") as f:
                     json.dump({"batches": []}, f, indent=2)
         else:
-            self._ensure_cloud_sql_table()
+            self._ensure_rds_table()
 
     def _get_db_connection(self):
-        """Retorna una conexión a Cloud SQL / PostgreSQL."""
+        """Retorna una conexión a Amazon RDS / PostgreSQL."""
         import psycopg2
         pg = self.config.postgres
         return psycopg2.connect(
@@ -103,8 +103,8 @@ class BatchControlManager:
             connect_timeout=3,
         )
 
-    def _ensure_cloud_sql_table(self) -> None:
-        """Crea la tabla 'lotes' en Cloud SQL si aún no existe."""
+    def _ensure_rds_table(self) -> None:
+        """Crea la tabla 'lotes' en Amazon RDS si aún no existe."""
         try:
             conn = self._get_db_connection()
             with conn.cursor() as cur:
@@ -127,7 +127,7 @@ class BatchControlManager:
             conn.commit()
             conn.close()
         except Exception as e:
-            logger.warning("No se pudo verificar/crear la tabla 'lotes' en Cloud SQL: %s", e)
+            logger.warning("No se pudo verificar/crear la tabla 'lotes' en Amazon RDS: %s", e)
 
     def _load_registry_local(self) -> Dict[str, Any]:
         """Lee el registro de lotes desde el archivo JSON local."""
@@ -155,7 +155,7 @@ class BatchControlManager:
         Returns:
             bool: True si el hash ya existe y no falló, False si es un lote nuevo.
         """
-        if self.config.is_gcp:
+        if self.config.is_aws:
             try:
                 conn = self._get_db_connection()
                 with conn.cursor() as cur:
@@ -173,7 +173,7 @@ class BatchControlManager:
                 conn.close()
                 return row is not None
             except Exception as e:
-                logger.warning("Fallo al consultar tabla 'lotes' en Cloud SQL (%s). Verificando registro local de respaldo.", e)
+                logger.warning("Fallo al consultar tabla 'lotes' en Amazon RDS (%s). Verificando registro local de respaldo.", e)
                 # Fallback al registro local si la base de datos no está disponible
                 return self._is_batch_processed_local(file_hash, source)
 
@@ -191,12 +191,12 @@ class BatchControlManager:
 
     def register_batch(self, metadata: BatchMetadata) -> None:
         """
-        Registra un nuevo lote en el catálogo de control (Cloud SQL o archivo local).
+        Registra un nuevo lote en el catálogo de control (Amazon RDS o archivo local).
 
         Args:
             metadata: Objeto BatchMetadata a persistir.
         """
-        if self.config.is_gcp:
+        if self.config.is_aws:
             try:
                 conn = self._get_db_connection()
                 with conn.cursor() as cur:
@@ -221,10 +221,10 @@ class BatchControlManager:
                     ))
                 conn.commit()
                 conn.close()
-                logger.info("Lote registrado en Cloud SQL (tabla lotes): [%s]", metadata.batch_id)
+                logger.info("Lote registrado en Amazon RDS (tabla lotes): [%s]", metadata.batch_id)
                 return
             except Exception as e:
-                logger.warning("Fallo al registrar lote en Cloud SQL: %s. Respaldando en local.", e)
+                logger.warning("Fallo al registrar lote en Amazon RDS: %s. Respaldando en local.", e)
 
         # Registro en JSON local
         registry = self._load_registry_local()
@@ -252,7 +252,7 @@ class BatchControlManager:
             bool: True si el lote fue encontrado y actualizado, False en caso contrario.
         """
         updated = False
-        if self.config.is_gcp:
+        if self.config.is_aws:
             try:
                 conn = self._get_db_connection()
                 with conn.cursor() as cur:
@@ -264,10 +264,10 @@ class BatchControlManager:
                 conn.commit()
                 conn.close()
                 if updated:
-                    logger.info("Estado del lote %s actualizado a '%s' en Cloud SQL.", file_hash[:12], new_status)
+                    logger.info("Estado del lote %s actualizado a '%s' en Amazon RDS.", file_hash[:12], new_status)
                     return True
             except Exception as e:
-                logger.warning("Fallo al actualizar lote en Cloud SQL: %s. Actualizando registro local.", e)
+                logger.warning("Fallo al actualizar lote en Amazon RDS: %s. Actualizando registro local.", e)
 
         registry = self._load_registry_local()
         for batch in registry.get("batches", []):
@@ -291,7 +291,7 @@ class BatchControlManager:
         Returns:
             List[BatchMetadata]: Lista de lotes pendientes.
         """
-        if self.config.is_gcp:
+        if self.config.is_aws:
             try:
                 conn = self._get_db_connection()
                 with conn.cursor() as cur:
@@ -326,7 +326,7 @@ class BatchControlManager:
                     for r in rows
                 ]
             except Exception as e:
-                logger.warning("Fallo al leer lotes pendientes de Cloud SQL: %s. Leyendo local.", e)
+                logger.warning("Fallo al leer lotes pendientes de Amazon RDS: %s. Leyendo local.", e)
 
         registry = self._load_registry_local()
         results = []

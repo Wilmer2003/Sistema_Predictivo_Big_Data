@@ -1,7 +1,7 @@
 """
 Pruebas Unitarias para el Módulo de Serving (src/serving/).
 Valida la sintaxis e integridad del esquema DDL (schema.sql), configuración JDBC
-y manejo robusto de excepciones de conectividad para Cloud SQL / PostgreSQL.
+y manejo robusto de excepciones de conectividad para Amazon RDS / PostgreSQL.
 """
 
 from pathlib import Path
@@ -20,7 +20,7 @@ class TestServing(unittest.TestCase):
         with open(schema_path, "r", encoding="utf-8") as f:
             ddl_content = f.read().upper()
 
-        # Validar existencia de la tabla de auditoría de lotes de Cloud SQL
+        # Validar existencia de la tabla de auditoría de lotes de Amazon RDS
         self.assertIn("CREATE TABLE IF NOT EXISTS LOTES", ddl_content)
         self.assertIn("CREATE INDEX IF NOT EXISTS IDX_LOTES_FILE_HASH", ddl_content)
 
@@ -39,7 +39,7 @@ class TestServing(unittest.TestCase):
         self.assertIn("CREATE INDEX IF NOT EXISTS IDX_FACT_TIEMPO", ddl_content)
 
     def test_postgres_config_and_jdbc_properties(self):
-        """Verifica la construcción de la URL JDBC y propiedades para Spark / Cloud SQL."""
+        """Verifica la construcción de la URL JDBC y propiedades para Spark / Amazon RDS PostgreSQL."""
         pg = PostgresConfig(
             host="10.10.0.5",
             port=5432,

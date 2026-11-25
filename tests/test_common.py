@@ -26,13 +26,13 @@ from src.common.geo_utils import (
 
 
 # ==============================================================================
-# 1. PRUEBAS DE CONFIGURACIÓN Y RUTAS (Local vs Google Cloud)
+# 1. PRUEBAS DE CONFIGURACIÓN Y RUTAS (Local vs Amazon Web Services)
 # ==============================================================================
 class TestConfig(unittest.TestCase):
     def test_local_default_paths(self):
         """Verifica que las rutas en entorno local apunten a data/raw, data/processed y data/curated."""
-        cfg = AppConfig(env="local", gcs_bucket="")
-        self.assertFalse(cfg.is_gcp)
+        cfg = AppConfig(env="local", s3_bucket="")
+        self.assertFalse(cfg.is_aws)
         self.assertTrue(cfg.raw_base_path.endswith("/data/raw"))
         self.assertTrue(cfg.processed_base_path.endswith("/data/processed"))
         self.assertTrue(cfg.curated_base_path.endswith("/data/curated"))
@@ -41,31 +41,31 @@ class TestConfig(unittest.TestCase):
         self.assertTrue(cfg.get_gold_path("epidemiologia_clima").endswith("/data/curated/epidemiologia_clima"))
         self.assertTrue(cfg.get_model_path("rf_ira_model").endswith("/results/modelos/rf_ira_model"))
 
-    def test_gcp_gcs_paths(self):
-        """Verifica que en entorno Google Cloud las rutas se construyan con el prefijo gs://."""
+    def test_aws_s3_paths(self):
+        """Verifica que en entorno AWS las rutas se construyan con el prefijo s3://."""
         cfg = AppConfig(
-            env="gcp",
-            gcs_bucket="mi-bucket-analitica",
-            gcp_project_id="sistema-predictivo-upao",
+            env="aws",
+            s3_bucket="mi-bucket-analitica",
+            aws_region="us-east-1",
         )
-        self.assertTrue(cfg.is_gcp)
-        self.assertEqual(cfg.raw_base_path, "gs://mi-bucket-analitica/bronze")
-        self.assertEqual(cfg.processed_base_path, "gs://mi-bucket-analitica/silver")
-        self.assertEqual(cfg.curated_base_path, "gs://mi-bucket-analitica/gold")
-        self.assertEqual(cfg.models_base_path, "gs://mi-bucket-analitica/modelos")
-        self.assertEqual(cfg.get_bronze_path("senamhi"), "gs://mi-bucket-analitica/bronze/senamhi")
-        self.assertEqual(cfg.get_silver_path("ira"), "gs://mi-bucket-analitica/silver/ira")
-        self.assertEqual(cfg.get_gold_path(), "gs://mi-bucket-analitica/gold/epidemiologia_clima")
-        self.assertEqual(cfg.get_model_path("rf_ira_model"), "gs://mi-bucket-analitica/modelos/rf_ira_model")
+        self.assertTrue(cfg.is_aws)
+        self.assertEqual(cfg.raw_base_path, "s3://mi-bucket-analitica/bronze")
+        self.assertEqual(cfg.processed_base_path, "s3://mi-bucket-analitica/silver")
+        self.assertEqual(cfg.curated_base_path, "s3://mi-bucket-analitica/gold")
+        self.assertEqual(cfg.models_base_path, "s3://mi-bucket-analitica/modelos")
+        self.assertEqual(cfg.get_bronze_path("senamhi"), "s3://mi-bucket-analitica/bronze/senamhi")
+        self.assertEqual(cfg.get_silver_path("ira"), "s3://mi-bucket-analitica/silver/ira")
+        self.assertEqual(cfg.get_gold_path(), "s3://mi-bucket-analitica/gold/epidemiologia_clima")
+        self.assertEqual(cfg.get_model_path("rf_ira_model"), "s3://mi-bucket-analitica/modelos/rf_ira_model")
 
-    def test_gcp_missing_bucket_raises_error(self):
-        """Valida que levantar rutas GCP sin GCS_BUCKET genere un ValueError explícito."""
-        cfg = AppConfig(env="gcp", gcs_bucket="")
+    def test_aws_missing_bucket_raises_error(self):
+        """Valida que levantar rutas AWS sin S3_BUCKET genere un ValueError explícito."""
+        cfg = AppConfig(env="aws", s3_bucket="")
         with self.assertRaises(ValueError):
             _ = cfg.raw_base_path
 
     def test_postgres_jdbc_url(self):
-        """Verifica la generación de la URL JDBC y propiedades de Cloud SQL / PostgreSQL."""
+        """Verifica la generación de la URL JDBC y propiedades de Amazon RDS / PostgreSQL."""
         pg = PostgresConfig(
             host="10.0.0.5",
             port=5432,
