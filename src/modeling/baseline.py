@@ -62,7 +62,9 @@ def evaluar_baseline_persistencia(
 
     logger.info("Evaluando Baseline de Persistencia (y_hat = %s)...", lag1_col)
 
-    df_base = df_eval.dropna(subset=[target_col, lag1_col])
+    df_base = df_eval.dropna(subset=[target_col, lag1_col]).withColumn(
+        lag1_col, col(lag1_col).cast("double")
+    )
 
     eval_rmse = RegressionEvaluator(labelCol=target_col, predictionCol=lag1_col, metricName="rmse")
     eval_mae = RegressionEvaluator(labelCol=target_col, predictionCol=lag1_col, metricName="mae")

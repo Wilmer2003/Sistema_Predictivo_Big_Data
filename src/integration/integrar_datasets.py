@@ -218,9 +218,7 @@ def procesar_capa_gold(
     df_features.write.mode("overwrite").parquet(f"{gold_dir}/features_ml")
 
     control_mgr = BatchControlManager(config=cfg)
-    for b in control_mgr._load_registry().get("batches", []):
-        if b.get("status") == "PROCESSED_SILVER":
-            control_mgr.update_batch_status(b.get("file_hash"), "PROCESSED_GOLD")
+    control_mgr.mark_silver_batches_as_gold()
 
     logger.info("Integración Gold finalizada exitosamente.")
     return dim_ubigeo, dim_tiempo, fact_vigilancia, df_features

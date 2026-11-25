@@ -199,7 +199,7 @@ python -m unittest discover -s tests -p "test_*.py" -v
 
 En Windows, `requirements.txt` instala PySpark 3.5.9, que corrige el cierre inesperado de los workers con Python 3.12. Si Spark detecta la ruta original al usar la unidad `S:\`, configura `SPARK_HOME=S:/venv/Lib/site-packages/pyspark` y `PYSPARK_PYTHON=S:/venv/Scripts/python.exe` en `.env`.
 
-Las pruebas de Spark ejecutan transformaciones en memoria. Para operaciones nativas de Hadoop, define `HADOOP_HOME` en `.env` con la ruta raíz de una distribución compatible que incluya `bin/winutils.exe` y `bin/hadoop.dll`. Spark detecta también `hadoop/bin/winutils.exe` dentro del repositorio.
+Las pruebas de Spark ejecutan transformaciones en memoria. Para leer y escribir Parquet en Windows, coloca `winutils.exe` y `hadoop.dll` en `hadoop/bin/` y define `HADOOP_HOME=hadoop` en `.env`. Se comprobó la compatibilidad con PySpark 3.5.9 usando los binarios 3.3.5 que instala la [CI de .NET for Apache Spark](https://github.com/dotnet/spark/blob/main/azure-pipelines-pr.yml). La sesión agrega `hadoop/bin/` a la ruta de bibliotecas de la JVM al iniciar, y Git ignora ambos binarios.
 
 *(O `pytest -q` si prefieres el reporte resumido de pytest).*
 

@@ -32,6 +32,7 @@ results/
 Thumbs.db
 
 # Hadoop y Spark
+/hadoop/bin/
 *.crc
 _SUCCESS
 spark-warehouse/

@@ -53,12 +53,17 @@ def get_spark_session(
             os.environ["PYSPARK_PYTHON"] = sys.executable
 
         hadoop_home = os.environ.get("HADOOP_HOME")
-        if hadoop_home:
-            os.environ["HADOOP_HOME"] = str(
-                (cfg.root_dir / Path(hadoop_home)).resolve()
-            )
-        elif (cfg.root_dir / "hadoop" / "bin" / "winutils.exe").is_file():
-            os.environ["HADOOP_HOME"] = str(cfg.root_dir / "hadoop")
+        hadoop_dir = (cfg.root_dir / Path(hadoop_home or "hadoop")).resolve()
+        hadoop_bin = hadoop_dir / "bin"
+        if hadoop_home or (hadoop_bin / "winutils.exe").is_file():
+            os.environ["HADOOP_HOME"] = str(hadoop_dir)
+
+        # OpenJDK incorpora PATH en java.library.path al iniciar la JVM en Windows.
+        if (hadoop_bin / "hadoop.dll").is_file():
+            process_path = os.environ.get("PATH", "").split(os.pathsep)
+            native_dir = str(hadoop_bin)
+            if os.path.normcase(process_path[0]) != os.path.normcase(native_dir):
+                os.environ["PATH"] = os.pathsep.join([native_dir, *process_path])
 
     logger.info("Inicializando SparkSession: '%s' (Entorno: %s)", final_app_name, cfg.env)
 

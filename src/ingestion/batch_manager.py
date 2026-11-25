@@ -281,6 +281,32 @@ class BatchControlManager:
             logger.info("Estado del lote con hash %s actualizado a: %s en control local", file_hash[:12], new_status)
         return updated
 
+    def mark_silver_batches_as_gold(self) -> None:
+        """Avanza a Gold los lotes procesados en Silver."""
+        if self.config.is_aws:
+            conn = self._get_db_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE lotes SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE status = %s",
+                        ("PROCESSED_GOLD", "PROCESSED_SILVER"),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+            return
+
+        registry = self._load_registry_local()
+        silver_batches = [
+            batch for batch in registry.get("batches", [])
+            if batch.get("status") == "PROCESSED_SILVER"
+        ]
+        if silver_batches:
+            updated_at = datetime.now(timezone.utc).isoformat()
+            for batch in silver_batches:
+                batch.update(status="PROCESSED_GOLD", updated_at=updated_at)
+            self._save_registry_local(registry)
+
     def get_pending_batches(self, source: Optional[str] = None) -> List[BatchMetadata]:
         """
         Retorna la lista de lotes registrados que aún no se procesaron a Silver.
