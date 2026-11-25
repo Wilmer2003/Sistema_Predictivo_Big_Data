@@ -126,6 +126,13 @@ def ejecutar_pipeline_completo(
         args_emr = ["--silver", "--gold", "--model", "--serving"]
         return lanzar_step_emr(script_s3, step_args=args_emr, config=cfg)
 
+    # Si solo se requería la fase de ingesta Bronze, finalizamos exitosamente sin levantar Spark
+    if not (run_silver or run_gold or run_model or run_serving):
+        logger.info("\n==================================================")
+        logger.info("  FASE DE INGESTA BRONZE COMPLETADA EXITOSAMENTE")
+        logger.info("==================================================")
+        return True
+
     from src.common.spark_session import get_spark_session, stop_spark_session
 
     # Ejecución de PySpark (en clúster o en entorno local)
