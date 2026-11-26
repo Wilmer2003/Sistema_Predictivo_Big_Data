@@ -5,6 +5,8 @@ fact_vigilancia_clima y predicciones) hacia la base de datos relacional para Pow
 """
 
 import argparse
+from contextlib import closing
+from importlib.resources import files
 from pathlib import Path
 from typing import Dict, Optional, TYPE_CHECKING
 
@@ -16,6 +18,22 @@ from src.common.logger import get_logger
 from src.common.spark_session import get_spark_session
 
 logger = get_logger("Serving_Postgres")
+
+CLAVES_SERVING = {
+    "dim_ubigeo": ("ubigeo",),
+    "dim_tiempo": ("tiempo_id",),
+    "fact_vigilancia_clima": ("ubigeo", "tiempo_id"),
+    "predicciones_vigilancia": ("ubigeo", "tiempo_id"),
+}
+
+
+def _conectar(pg: PostgresConfig):
+    import psycopg2
+
+    return psycopg2.connect(
+        host=pg.host, port=pg.port, dbname=pg.db,
+        user=pg.user, password=pg.password, connect_timeout=5,
+    )
 
 
 def probar_conexion_postgres(config: Optional[AppConfig] = None) -> bool:
@@ -30,16 +48,8 @@ def probar_conexion_postgres(config: Optional[AppConfig] = None) -> bool:
     logger.info("Probando conectividad hacia PostgreSQL en %s:%d/%s...", pg.host, pg.port, pg.db)
 
     try:
-        import psycopg2
-        conn = psycopg2.connect(
-            host=pg.host,
-            port=pg.port,
-            dbname=pg.db,
-            user=pg.user,
-            password=pg.password,
-            connect_timeout=3,
-        )
-        conn.close()
+        with closing(_conectar(pg)):
+            pass
         logger.info("Conexión a PostgreSQL establecida exitosamente.")
         return True
     except ImportError:
@@ -59,29 +69,13 @@ def crear_tablas_postgres(config: Optional[AppConfig] = None) -> bool:
     """
     cfg = config or get_config()
     pg = cfg.postgres
-    schema_path = Path(__file__).parent / "schema.sql"
-
-    if not schema_path.is_file():
-        logger.error("Archivo DDL no encontrado: %s", schema_path)
-        return False
-
-    with open(schema_path, "r", encoding="utf-8") as f:
-        ddl_sql = f.read()
-
     try:
-        import psycopg2
-        conn = psycopg2.connect(
-            host=pg.host,
-            port=pg.port,
-            dbname=pg.db,
-            user=pg.user,
-            password=pg.password,
-            connect_timeout=5,
-        )
-        with conn.cursor() as cur:
+        from psycopg2 import sql
+
+        ddl_sql = files("src.serving").joinpath("schema.sql").read_text(encoding="utf-8")
+        with closing(_conectar(pg)) as conn, conn, conn.cursor() as cur:
+            cur.execute(sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(pg.schema)))
             cur.execute(ddl_sql)
-        conn.commit()
-        conn.close()
         logger.info("Tablas del esquema dimensional creadas exitosamente en PostgreSQL.")
         return True
     except ImportError:
@@ -98,38 +92,28 @@ def cargar_dataframe_a_postgres(
     modo: str = "append",
     config: Optional[AppConfig] = None,
 ) -> bool:
-    """
-    Carga un DataFrame de PySpark hacia una tabla de PostgreSQL mediante JDBC.
-
-    Args:
-        df: DataFrame de PySpark a escribir.
-        nombre_tabla: Nombre de la tabla destino en PostgreSQL.
-        modo: 'append' o 'overwrite'.
-        config: Configuración de la aplicación.
-
-    Returns:
-        bool: True si la escritura fue exitosa, False en caso contrario.
-    """
+    """Inserta filas por lotes en una transacción y conserva las claves existentes."""
     cfg = config or get_config()
     pg = cfg.postgres
 
-    logger.info("Escribiendo datos en PostgreSQL (Tabla: %s, Modo: %s)...", nombre_tabla, modo)
     try:
-        (
-            df.write
-            .format("jdbc")
-            .option("url", pg.jdbc_url)
-            .option("dbtable", nombre_tabla)
-            .option("user", pg.user)
-            .option("password", pg.password)
-            .option("driver", "org.postgresql.Driver")
-            .mode(modo)
-            .save()
+        from psycopg2 import sql
+        from psycopg2.extras import execute_values
+
+        if modo != "append":
+            raise ValueError("Serving admite únicamente el modo append idempotente.")
+        claves = CLAVES_SERVING[nombre_tabla]
+        consulta = sql.SQL("INSERT INTO {} ({}) VALUES %s ON CONFLICT ({}) DO NOTHING").format(
+            sql.Identifier(pg.schema, nombre_tabla),
+            sql.SQL(", ").join(map(sql.Identifier, df.columns)),
+            sql.SQL(", ").join(map(sql.Identifier, claves)),
         )
+        with closing(_conectar(pg)) as conn, conn, conn.cursor() as cur:
+            execute_values(cur, consulta, df.toLocalIterator(), page_size=1000)
         logger.info("Tabla '%s' cargada correctamente en PostgreSQL.", nombre_tabla)
         return True
-    except Exception as e:
-        logger.error("Error al escribir tabla '%s' vía JDBC: %s", nombre_tabla, e)
+    except Exception:
+        logger.exception("Error al escribir tabla '%s' en PostgreSQL.", nombre_tabla)
         return False
 
 
@@ -145,7 +129,7 @@ def cargar_capa_gold_a_postgres(
     1. dim_ubigeo
     2. dim_tiempo
     3. fact_vigilancia_clima
-    4. predicciones_vigilancia (si existen en results/estadisticas)
+    4. predicciones_vigilancia
     """
     cfg = config or get_config()
     active_spark = spark or get_spark_session(app_name="Serving_Carga_Postgres", config=cfg)
@@ -169,20 +153,68 @@ def cargar_capa_gold_a_postgres(
             logger.warning("No se pudo cargar tabla '%s': %s", tabla_pg, e)
             resultados[tabla_pg] = False
 
-    # Cargar predicciones si existen
-    preds_path = str(cfg.root_dir / "results" / "estadisticas" / "predicciones_vigilancia").replace("\\", "/")
-    if Path(preds_path).exists():
+    preds_path = cfg.get_predictions_path()
+    if cfg.is_aws or Path(preds_path).exists():
         try:
+            if not resultados["dim_tiempo"] or not resultados["dim_ubigeo"]:
+                raise ValueError("La carga de predicciones requiere ambas dimensiones.")
             df_preds = active_spark.read.parquet(preds_path)
-            exito = cargar_dataframe_a_postgres(df_preds, "predicciones_vigilancia", modo=modo, config=cfg)
+
+            # Obtener la dimensión temporal desde Gold
+            df_tiempo = active_spark.read.parquet(
+                f"{gold_dir}/dim_tiempo"
+            ).select(
+                "tiempo_id",
+                "ano",
+                "semana_epidemiologica"
+            )
+
+            # Verificar cantidad original de predicciones
+            total_original = df_preds.count()
+
+            # Incorporar tiempo_id mediante la clave temporal
+            df_preds = df_preds.join(
+                df_tiempo,
+                on=["ano", "semana_epidemiologica"],
+                how="left"
+            )
+
+            # Validar que todas las predicciones tengan tiempo_id
+            if df_preds.filter("tiempo_id IS NULL").count() > 0:
+                raise ValueError(
+                    "Existen predicciones sin correspondencia temporal."
+                )
+
+            # Evitar multiplicación de registros durante el JOIN
+            if df_preds.count() != total_original:
+                raise ValueError(
+                    "El JOIN temporal modificó la cantidad de predicciones."
+                )
+
+            logger.info(
+                "Predicciones validadas para PostgreSQL: %d",
+                total_original
+            )
+
+            exito = cargar_dataframe_a_postgres(
+                df_preds,
+                "predicciones_vigilancia",
+                modo=modo,
+                config=cfg
+            )
+
             resultados["predicciones_vigilancia"] = exito
+
         except Exception as e:
-            logger.warning("No se pudo cargar tabla de predicciones: %s", e)
+            logger.warning(
+                "No se pudo cargar tabla de predicciones: %s", e
+            )
             resultados["predicciones_vigilancia"] = False
+    else:
+        logger.warning("No se encontraron predicciones en: %s", preds_path)
+        resultados["predicciones_vigilancia"] = False
 
     return resultados
-
-
 def main():
     parser = argparse.ArgumentParser(description="Módulo de Serving hacia Amazon RDS PostgreSQL / Local.")
     parser.add_argument("--test", action="store_true", help="Probar conectividad con PostgreSQL.")
@@ -193,14 +225,19 @@ def main():
     cfg = get_config()
 
     if args.test:
-        probar_conexion_postgres(cfg)
+        return 0 if probar_conexion_postgres(cfg) else 1
     elif args.crear_tablas:
-        crear_tablas_postgres(cfg)
+        return 0 if crear_tablas_postgres(cfg) else 1
     elif args.cargar:
-        cargar_capa_gold_a_postgres(config=cfg)
+        try:
+            resultados = cargar_capa_gold_a_postgres(config=cfg)
+            return 0 if all(resultados.values()) else 1
+        except Exception:
+            logger.exception("No se pudo iniciar la carga de Serving.")
+            return 1
     else:
         parser.print_help()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

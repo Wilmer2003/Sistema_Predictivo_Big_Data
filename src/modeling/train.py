@@ -173,16 +173,20 @@ def entrenar_modelo_predictivo(
     logger.info("==================================================")
 
     # 8. Persistir modelo y métricas en disco
-    dir_modelos = cfg.root_dir / "results" / "modelos" / model_name
-    dir_estadisticas = cfg.root_dir / "results" / "estadisticas"
-    dir_modelos.parent.mkdir(parents=True, exist_ok=True)
+    model_path = cfg.get_model_path(model_name)
+    report_root = Path.cwd() if cfg.is_aws else cfg.root_dir
+    dir_estadisticas = report_root / "results" / "estadisticas"
+    if not cfg.is_aws:
+        Path(model_path).parent.mkdir(parents=True, exist_ok=True)
     dir_estadisticas.mkdir(parents=True, exist_ok=True)
 
     # Guardar modelo de Spark
     try:
-        model.write().overwrite().save(str(dir_modelos).replace("\\", "/"))
-        logger.info("Modelo serializado guardado en: %s", dir_modelos)
+        model.write().overwrite().save(model_path)
+        logger.info("Modelo serializado guardado en: %s", model_path)
     except Exception as e:
+        if cfg.is_aws:
+            raise
         logger.warning("No se pudo serializar el modelo en disco local: %s", e)
 
     # Guardar reporte JSON

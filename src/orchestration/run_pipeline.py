@@ -181,8 +181,11 @@ def ejecutar_pipeline_completo(
             from src.serving.cargar_postgres import crear_tablas_postgres, cargar_capa_gold_a_postgres
 
             logger.info("\n--- [FASE 5: SERVING - AMAZON RDS / POSTGRESQL] ---")
-            crear_tablas_postgres(config=cfg)
-            cargar_capa_gold_a_postgres(spark=spark, config=cfg)
+            if not crear_tablas_postgres(config=cfg):
+                return False
+            resultados_serving = cargar_capa_gold_a_postgres(spark=spark, config=cfg)
+            if not all(resultados_serving.values()):
+                return False
 
         logger.info("\n==================================================")
         logger.info("  PIPELINE EJECUTADO EXITOSAMENTE AL 100%")

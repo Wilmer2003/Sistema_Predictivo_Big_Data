@@ -188,6 +188,12 @@ class AppConfig:
         return f"{self.models_base_path}/{model_name}"
 
 
+    def get_predictions_path(self, output_name: str = "predicciones_vigilancia") -> str:
+        if self.is_aws:
+            return f"{self.get_gold_path()}/{output_name}"
+        return (self.root_dir / "results" / "estadisticas" / output_name).as_posix()
+
+
 # Instancia singleton predeterminada
 _config_instance: Optional[AppConfig] = None
 

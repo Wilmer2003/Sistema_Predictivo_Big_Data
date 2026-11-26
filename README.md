@@ -40,7 +40,7 @@ Arquitectura de datos sobre Apache Spark (PySpark 3.5.3), compatible tanto en al
 | **Silver** | `data/processed/` | `s3://<bucket>/silver/` | Datos limpios, tipados estrictos en PySpark, filtrados para La Libertad (13), deduplicados por clave de negocio y guardados en **Parquet particionado por Año** (escritura dinámica de particiones). |
 | **Gold** | `data/curated/` | `s3://<bucket>/gold/` | Esquema dimensional (`dim_ubigeo`, `dim_tiempo`, `fact_vigilancia_clima`) y dataset analítico con **variables rezagadas (lags de 1 a 3 semanas)**, deltas y medias móviles. |
 | **Modelado** | `results/modelos/` | `s3://<bucket>/modelos/` | Pipeline de PySpark MLlib (Random Forest / GBT / Regresión Lineal) evaluado frente a un **baseline de persistencia** ($y_t = y_{t-1}$) con métricas RMSE, MAE y $R^2$. |
-| **Serving** | `src/serving/` | `Amazon RDS (PostgreSQL)` | Script DDL relacional y cargador JDBC hacia Amazon RDS PostgreSQL para tableros analíticos y tabla de auditoría `lotes`. |
+| **Serving** | `src/serving/` | `Amazon RDS (PostgreSQL)` | Esquema relacional y carga idempotente a PostgreSQL para tableros analíticos y auditoría de lotes. |
 
 ---
 
@@ -64,7 +64,7 @@ Sistema_Predictivo_Big_Data/
 │   ├── preprocessing/       # Limpieza en PySpark, filtro La Libertad (13), bandeo de celda pequeña y Parquet Silver
 │   ├── integration/         # Agregación semanal, lags temporales 1-3 semanas y modelo dimensional Gold
 │   ├── modeling/            # Pipeline MLlib, evaluación frente a persistencia, entrenamiento e inferencia
-│   ├── serving/             # schema.sql DDL (tablas Gold + lotes) y cargador JDBC a Amazon RDS PostgreSQL
+│   ├── serving/             # schema.sql DDL (tablas Gold + lotes) y carga a PostgreSQL
 │   ├── orchestration/       # run_pipeline.py (orquestador maestro local y Amazon EMR)
 │   └── mapreduce/           # Scripts de referencia académica inicial
 ├── powerbi/                 # Guía de conexión e integración de tableros (.pbit) con Amazon RDS PostgreSQL
@@ -289,9 +289,24 @@ python -m src.orchestration.run_pipeline --model
 2. Entrena un modelo predictivo con Spark MLlib (Random Forest Regressor) para estimar los casos semanales de IRA.
 3. Compara objetivamente las métricas de error (**RMSE, MAE y $R^2$**) del modelo frente a un **baseline de persistencia** ($y_t = y_{t-1}$).
 4. Serializa el pipeline entrenado y guarda las predicciones con sus residuos.
+
 * **Dónde verificar:**
   * Métricas de evaluación: Abre el archivo JSON `results/estadisticas/metricas_evaluacion.json`.
   * Modelo exportado: Revisa la carpeta `results/modelos/rf_ira_model/`.
+
+### Carga de Serving en PostgreSQL
+
+Con las tablas Gold y las predicciones generadas, ejecuta:
+
+```powershell
+python -m src.orchestration.run_pipeline --serving
+```
+
+Serving obtiene `tiempo_id` de `dim_tiempo` por año y semana epidemiológica. Cada tabla se carga en una transacción. Al repetir la carga, PostgreSQL conserva las filas existentes por su clave única e inserta las pendientes. Un error en cualquier tabla devuelve un código de salida distinto de cero.
+
+En modo local, Serving lee las predicciones desde `results/estadisticas/predicciones_vigilancia`. En modo AWS, modelado y Serving usan `s3://<S3_BUCKET>/gold/epidemiologia_clima/predicciones_vigilancia`.
+
+Consulta la [preparación de dependencias, paquete y configuración para EMR](infra/README.md).
 
 ---
 

@@ -61,5 +61,6 @@ __pycache__/
 .ipynb_checkpoints/
 *.pem
 
-# Power BI: solo plantilla .pbit, nunca .pbix
+# Power BI: excluir archivos .pbix salvo el informe del proyecto
 *.pbix
+!powerbi/Sistema_Predictivo_Big_Data.pbix
