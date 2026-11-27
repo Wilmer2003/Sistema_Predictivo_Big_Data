@@ -47,5 +47,82 @@ El modelo parametrizado utiliza tres parámetros de texto en Power Query.
 ## Uso local y futura conexión a AWS
 
 - **Local.** Los parámetros de PostgreSQL apuntan a la base de desarrollo. `RutaProyecto` se usa para encontrar los dos JSON en el equipo donde se actualiza el informe.
-- **AWS.** Con acceso autorizado a RDS, configura los parámetros de PostgreSQL para ese entorno. Para que la página de lotes refleje el pipeline en AWS, habrá que adaptar sus consultas y visuales a la tabla `lotes` de RDS. El JSON de evaluación se genera en el driver y debe ubicarse en una ruta accesible para Power BI.
+- **AWS.** Configura los mismos parámetros de PostgreSQL con el endpoint privado de RDS y la base que usa Serving. Con VPN y TLS habilitados, sigue la migración descrita abajo para que los lotes y las métricas provengan también de RDS.
 - **Publicación.** El informe conserva datos importados, incluidos agregados epidemiológicos y metadatos de lotes como nombres de archivos, hashes y fechas. Revisa su autorización de difusión y los valores grabados en los parámetros. El modelo parametrizado elimina `destination_path` de las consultas de lotes.
+
+## Sustituir las fuentes JSON por PostgreSQL
+
+Cuando la carga de AWS esté validada, editar las **dos consultas
+existentes** en el Editor avanzado de Power Query. Conservar los nombres
+de consulta, los pasos posteriores al origen, los alias de las columnas y
+los tipos finales. Así las medidas DAX, las relaciones y los visuales
+siguen apuntando a las mismas tablas y columnas. Usar el endpoint y la
+base que ya funcionan mediante VPN y TLS, con un rol de lectura.
+
+### Auditoría de lotes
+
+Sustituir el paso que actualmente produce el registro JSON raíz por el
+siguiente. Reutiliza `PostgresServidor` y `PostgresBaseDatos`.
+Mantener el nombre real de ese paso en el PBIX.
+
+```powerquery
+Origen = Json.Document(
+    PostgreSQL.Database(
+        PostgresServidor, PostgresBaseDatos,
+        [Query = "
+            SELECT jsonb_build_object(
+                'batches',
+                COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.ingest_timestamp, l.batch_id), '[]'::jsonb)
+            )::text AS documento
+            FROM public.lotes AS l
+        "]
+    ){0}[documento]
+),
+```
+
+Conservar la expansión de `batches` y los pasos de tipado. Si una lista
+vacía rompe la inferencia de columnas existente, materializar la lista
+con `Table.FromRecords(Origen[batches], ColumnasOriginales, MissingField.UseNull)`,
+donde `ColumnasOriginales` es la lista explícita del paso de expansión
+del PBIX. La tabla de origen incluye `batch_id`, `source`, `file_name`,
+`file_hash`, `file_size_bytes`, `load_date`, `ingest_timestamp`,
+`destination_path`, `status` y `updated_at`. Con RDS vacía, la auditoría
+debe mostrar cero lotes.
+
+### Métricas de evaluación
+
+El paso siguiente mantiene el mismo registro anidado que leía el JSON.
+Selecciona la evaluación más reciente por su fecha real, con un desempate
+estable. Si el tablero debe mostrar una ejecución específica, añadir
+`WHERE run_id = 'ID-DE-LA-EJECUCION'` antes de `ORDER BY`.
+
+```powerquery
+FilasMetricas = PostgreSQL.Database(
+    PostgresServidor, PostgresBaseDatos,
+    [Query = "
+        SELECT (reporte - 'run_id')::text AS documento
+        FROM public.metricas_evaluacion
+        ORDER BY timestamp_evaluacion DESC, run_id DESC
+        LIMIT 1
+    "]
+),
+Origen = if Table.IsEmpty(FilasMetricas)
+    then error "RDS todavía no contiene una evaluación verificable."
+    else Json.Document(FilasMetricas{0}[documento]),
+```
+
+Conservar los pasos que expanden `split_temporal`, `metricas_modelo`,
+`metricas_baseline_persistencia` y `ganancia_vs_baseline`. La conversión
+`Json.Document` lee texto devuelto por PostgreSQL. Las consultas dejan de
+depender de archivos JSON locales. Aplicar este cambio de métricas
+cuando exista al menos una evaluación AWS verificable en RDS.
+
+Antes de aplicar los cambios, comparar en vista previa los nombres,
+tipos y número de columnas con el último paso de las consultas originales.
+Después de actualizar, comprobar los totales y las medidas DAX en las
+páginas de auditoría y monitoreo. Aprobar la consulta SQL nativa en Power
+BI si aparece la solicitud. Consultar
+[PostgreSQL.Database](https://learn.microsoft.com/en-us/powerquery-m/postgresql-database).
+
+Para preparar el esquema de RDS y recuperar evidencia de EMR, consulta la
+[guía de auditoría y métricas en AWS](../docs/arquitectura/aws_auditoria_metricas.md).

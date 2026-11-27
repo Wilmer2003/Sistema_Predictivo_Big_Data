@@ -154,8 +154,7 @@ def procesar_silver_malaria(
 
     # Actualizar estado de lotes en el gestor de control
     control_mgr = BatchControlManager(config=cfg)
-    for b in control_mgr.get_pending_batches(source="malaria"):
-        control_mgr.update_batch_status(b.file_hash, "PROCESSED_SILVER")
+    control_mgr.mark_batches_as_silver("malaria", df_raw.inputFiles() if cfg.is_aws else None)
 
     logger.info("Pipeline Silver de Malaria concluido con éxito.")
     return df_silver

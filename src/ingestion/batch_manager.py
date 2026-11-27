@@ -10,9 +10,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from urllib.parse import unquote
 from typing import Optional, Dict, List, Any
 from src.common.config import get_config, AppConfig
 from src.common.logger import get_logger
+from src.common.postgres import connect_postgres, postgres_cursor
+from src.common.s3_artifacts import put_json, validate_run_id
 
 logger = get_logger(__name__)
 
@@ -76,58 +79,17 @@ class BatchControlManager:
 
     def __init__(self, config: Optional[AppConfig] = None):
         self.config = config or get_config()
-        self.control_file_path = self.config.batch_control_path
-        self._ensure_control_storage()
-
-    def _ensure_control_storage(self) -> None:
-        """Asegura que el directorio y archivo de control existan si es local, o la tabla si es AWS."""
         if not self.config.is_aws:
-            p = Path(self.control_file_path)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            if not p.exists():
-                with open(p, "w", encoding="utf-8") as f:
-                    json.dump({"batches": []}, f, indent=2)
-        else:
-            self._ensure_rds_table()
+            self.control_file_path = self.config.batch_control_path
+            path = Path(self.control_file_path)
+            try:
+                with path.open("x", encoding="utf-8") as file:
+                    json.dump({"batches": []}, file, indent=2)
+            except FileExistsError:
+                pass
 
     def _get_db_connection(self):
-        """Retorna una conexión a Amazon RDS / PostgreSQL."""
-        import psycopg2
-        pg = self.config.postgres
-        return psycopg2.connect(
-            host=pg.host,
-            port=pg.port,
-            dbname=pg.db,
-            user=pg.user,
-            password=pg.password,
-            connect_timeout=3,
-        )
-
-    def _ensure_rds_table(self) -> None:
-        """Crea la tabla 'lotes' en Amazon RDS si aún no existe."""
-        try:
-            conn = self._get_db_connection()
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS lotes (
-                        batch_id VARCHAR(100) PRIMARY KEY,
-                        source VARCHAR(50) NOT NULL,
-                        file_name VARCHAR(255) NOT NULL,
-                        file_hash VARCHAR(64) NOT NULL UNIQUE,
-                        file_size_bytes BIGINT NOT NULL,
-                        load_date DATE NOT NULL,
-                        ingest_timestamp TIMESTAMP NOT NULL,
-                        destination_path TEXT NOT NULL,
-                        status VARCHAR(50) NOT NULL,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_lotes_file_hash ON lotes (file_hash);
-                    CREATE INDEX IF NOT EXISTS idx_lotes_source_status ON lotes (source, status);
-                """)
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.warning("No se pudo verificar/crear la tabla 'lotes' en Amazon RDS: %s", e)
+        return connect_postgres(self.config.postgres)
 
     def _load_registry_local(self) -> Dict[str, Any]:
         """Lee el registro de lotes desde el archivo JSON local."""
@@ -145,38 +107,14 @@ class BatchControlManager:
         os.replace(temp_path, self.control_file_path)
 
     def is_batch_processed(self, file_hash: str, source: Optional[str] = None) -> bool:
-        """
-        Verifica si un archivo con el hash SHA-256 especificado ya está registrado.
-
-        Args:
-            file_hash: Hash SHA-256 a validar.
-            source: Nombre opcional de la fuente ('ira', 'malaria', 'senamhi').
-
-        Returns:
-            bool: True si el hash ya existe y no falló, False si es un lote nuevo.
-        """
         if self.config.is_aws:
-            try:
-                conn = self._get_db_connection()
-                with conn.cursor() as cur:
-                    if source:
-                        cur.execute(
-                            "SELECT status FROM lotes WHERE file_hash = %s AND LOWER(source) = LOWER(%s) AND status != 'FAILED'",
-                            (file_hash, source),
-                        )
-                    else:
-                        cur.execute(
-                            "SELECT status FROM lotes WHERE file_hash = %s AND status != 'FAILED'",
-                            (file_hash,),
-                        )
-                    row = cur.fetchone()
-                conn.close()
-                return row is not None
-            except Exception as e:
-                logger.warning("Fallo al consultar tabla 'lotes' en Amazon RDS (%s). Verificando registro local de respaldo.", e)
-                # Fallback al registro local si la base de datos no está disponible
-                return self._is_batch_processed_local(file_hash, source)
-
+            with postgres_cursor(self._get_db_connection()) as cur:
+                cur.execute(
+                    "SELECT 1 FROM public.lotes WHERE file_hash = %s AND status <> 'FAILED' "
+                    "AND (%s::text IS NULL OR lower(source) = lower(%s))",
+                    (file_hash, source, source),
+                )
+                return cur.fetchone() is not None
         return self._is_batch_processed_local(file_hash, source)
 
     def _is_batch_processed_local(self, file_hash: str, source: Optional[str] = None) -> bool:
@@ -189,42 +127,39 @@ class BatchControlManager:
                     return True
         return False
 
-    def register_batch(self, metadata: BatchMetadata) -> None:
-        """
-        Registra un nuevo lote en el catálogo de control (Amazon RDS o archivo local).
-
-        Args:
-            metadata: Objeto BatchMetadata a persistir.
-        """
+    def register_batch(self, metadata: BatchMetadata, *, force: bool = False) -> None:
         if self.config.is_aws:
-            try:
-                conn = self._get_db_connection()
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO lotes (
-                            batch_id, source, file_name, file_hash, file_size_bytes,
-                            load_date, ingest_timestamp, destination_path, status, updated_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                        ON CONFLICT (batch_id) DO UPDATE SET
-                            status = EXCLUDED.status,
-                            updated_at = CURRENT_TIMESTAMP
-                    """, (
-                        metadata.batch_id,
-                        metadata.source,
-                        metadata.file_name,
-                        metadata.file_hash,
-                        metadata.file_size_bytes,
-                        metadata.load_date,
-                        metadata.ingest_timestamp,
-                        metadata.destination_path,
-                        metadata.status,
-                    ))
-                conn.commit()
-                conn.close()
-                logger.info("Lote registrado en Amazon RDS (tabla lotes): [%s]", metadata.batch_id)
-                return
-            except Exception as e:
-                logger.warning("Fallo al registrar lote en Amazon RDS: %s. Respaldando en local.", e)
+            with postgres_cursor(self._get_db_connection()) as cur:
+                cur.execute("""
+                    INSERT INTO public.lotes AS lote (
+                        batch_id, source, file_name, file_hash, file_size_bytes,
+                        load_date, ingest_timestamp, destination_path, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (file_hash) DO UPDATE SET
+                        file_name = EXCLUDED.file_name,
+                        destination_path = EXCLUDED.destination_path,
+                        status = EXCLUDED.status,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE lote.source = EXCLUDED.source
+                      AND (lote.status = 'FAILED' OR %s)
+                    RETURNING batch_id
+                """, (
+                    metadata.batch_id, metadata.source, metadata.file_name, metadata.file_hash,
+                    metadata.file_size_bytes, metadata.load_date, metadata.ingest_timestamp,
+                    metadata.destination_path, metadata.status, force,
+                ))
+                row = cur.fetchone()
+                if row is None:
+                    cur.execute("SELECT batch_id, source FROM public.lotes WHERE file_hash = %s",
+                                (metadata.file_hash,))
+                    batch_id, source = cur.fetchone()
+                    if source != metadata.source:
+                        raise ValueError("El hash ya está registrado para otra fuente.")
+                else:
+                    batch_id = row[0]
+                metadata.batch_id = batch_id
+            logger.info("Lote registrado en public.lotes: %s", metadata.batch_id)
+            return
 
         # Registro en JSON local
         registry = self._load_registry_local()
@@ -253,21 +188,13 @@ class BatchControlManager:
         """
         updated = False
         if self.config.is_aws:
-            try:
-                conn = self._get_db_connection()
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE lotes SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE file_hash = %s",
-                        (new_status, file_hash),
-                    )
-                    updated = cur.rowcount > 0
-                conn.commit()
-                conn.close()
-                if updated:
-                    logger.info("Estado del lote %s actualizado a '%s' en Amazon RDS.", file_hash[:12], new_status)
-                    return True
-            except Exception as e:
-                logger.warning("Fallo al actualizar lote en Amazon RDS: %s. Actualizando registro local.", e)
+            with postgres_cursor(self._get_db_connection()) as cur:
+                cur.execute(
+                    "UPDATE public.lotes SET status = %s, updated_at = CURRENT_TIMESTAMP "
+                    "WHERE file_hash = %s AND (status = 'REGISTERED' OR %s = 'FAILED')",
+                    (new_status, file_hash, new_status),
+                )
+                return cur.rowcount > 0
 
         registry = self._load_registry_local()
         for batch in registry.get("batches", []):
@@ -284,16 +211,11 @@ class BatchControlManager:
     def mark_silver_batches_as_gold(self) -> None:
         """Avanza a Gold los lotes procesados en Silver."""
         if self.config.is_aws:
-            conn = self._get_db_connection()
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE lotes SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE status = %s",
-                        ("PROCESSED_GOLD", "PROCESSED_SILVER"),
-                    )
-                conn.commit()
-            finally:
-                conn.close()
+            with postgres_cursor(self._get_db_connection()) as cur:
+                cur.execute(
+                    "UPDATE public.lotes SET status = 'PROCESSED_GOLD', updated_at = CURRENT_TIMESTAMP "
+                    "WHERE status = 'PROCESSED_SILVER'"
+                )
             return
 
         registry = self._load_registry_local()
@@ -318,41 +240,14 @@ class BatchControlManager:
             List[BatchMetadata]: Lista de lotes pendientes.
         """
         if self.config.is_aws:
-            try:
-                conn = self._get_db_connection()
-                with conn.cursor() as cur:
-                    if source:
-                        cur.execute("""
-                            SELECT batch_id, source, file_name, file_hash, file_size_bytes,
-                                   load_date::text, ingest_timestamp::text, destination_path, status
-                            FROM lotes
-                            WHERE status = 'REGISTERED' AND LOWER(source) = LOWER(%s)
-                        """, (source,))
-                    else:
-                        cur.execute("""
-                            SELECT batch_id, source, file_name, file_hash, file_size_bytes,
-                                   load_date::text, ingest_timestamp::text, destination_path, status
-                            FROM lotes
-                            WHERE status = 'REGISTERED'
-                        """)
-                    rows = cur.fetchall()
-                conn.close()
-                return [
-                    BatchMetadata(
-                        batch_id=r[0],
-                        source=r[1],
-                        file_name=r[2],
-                        file_hash=r[3],
-                        file_size_bytes=int(r[4]),
-                        load_date=str(r[5]),
-                        ingest_timestamp=str(r[6]),
-                        destination_path=r[7],
-                        status=r[8],
-                    )
-                    for r in rows
-                ]
-            except Exception as e:
-                logger.warning("Fallo al leer lotes pendientes de Amazon RDS: %s. Leyendo local.", e)
+            with postgres_cursor(self._get_db_connection()) as cur:
+                cur.execute("""
+                    SELECT batch_id, source, file_name, file_hash, file_size_bytes,
+                           load_date::text, ingest_timestamp::text, destination_path, status
+                    FROM public.lotes
+                    WHERE status = 'REGISTERED' AND (%s::text IS NULL OR lower(source) = lower(%s))
+                """, (source, source))
+                return [BatchMetadata(*row) for row in cur.fetchall()]
 
         registry = self._load_registry_local()
         results = []
@@ -362,3 +257,33 @@ class BatchControlManager:
                     continue
                 results.append(BatchMetadata.from_dict(b))
         return results
+
+    def mark_batches_as_silver(self, source: str, input_files: Optional[List[str]] = None) -> None:
+        if self.config.is_aws:
+            paths = [unquote(path).replace("s3a://", "s3://", 1) for path in input_files or []]
+            with postgres_cursor(self._get_db_connection()) as cur:
+                cur.execute(
+                    "UPDATE public.lotes SET status = 'PROCESSED_SILVER', updated_at = CURRENT_TIMESTAMP "
+                    "WHERE status = 'REGISTERED' AND source = %s AND destination_path = ANY(%s::text[])",
+                    (source, paths),
+                )
+            return
+        for batch in self.get_pending_batches(source):
+            self.update_batch_status(batch.file_hash, "PROCESSED_SILVER")
+
+    def publish_snapshot(self, stage: str) -> str:
+        """Publica una lectura consistente del registro de RDS."""
+        if not self.config.is_aws or stage not in {"bronze", "silver", "gold", "recovery"}:
+            raise ValueError("El snapshot requiere modo AWS y una etapa conocida.")
+        run_id = validate_run_id(self.config.run_id)
+        with postgres_cursor(self._get_db_connection()) as cur:
+            cur.execute("SELECT row_to_json(l) FROM public.lotes l ORDER BY ingest_timestamp, batch_id")
+            batches = [row[0] for row in cur.fetchall()]
+        uri = put_json(self.config, f"control/runs/{run_id}/{stage}/batch_control.json", {
+            "run_id": run_id,
+            "stage": stage,
+            "timestamp_exportacion": datetime.now(timezone.utc).isoformat(),
+            "batches": batches,
+        })
+        logger.info("Snapshot de lotes guardado en %s", uri)
+        return uri

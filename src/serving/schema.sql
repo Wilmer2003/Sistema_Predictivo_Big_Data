@@ -4,7 +4,7 @@
 -- ==============================================================================
 
 -- 0. Tabla de Control de Lotes (Auditoría e Idempotencia en Amazon RDS PostgreSQL)
-CREATE TABLE IF NOT EXISTS lotes (
+CREATE TABLE IF NOT EXISTS public.lotes (
     batch_id VARCHAR(100) PRIMARY KEY,
     source VARCHAR(50) NOT NULL,
     file_name VARCHAR(255) NOT NULL,
@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS lotes (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_lotes_file_hash ON lotes (file_hash);
-CREATE INDEX IF NOT EXISTS idx_lotes_source_status ON lotes (source, status);
+CREATE INDEX IF NOT EXISTS idx_lotes_file_hash ON public.lotes (file_hash);
+CREATE INDEX IF NOT EXISTS idx_lotes_source_status ON public.lotes (source, status);
 
 -- 1. Dimensión Geográfica (Ubigeo)
 CREATE TABLE IF NOT EXISTS dim_ubigeo (
@@ -95,3 +95,26 @@ CREATE INDEX IF NOT EXISTS idx_fact_tiempo ON fact_vigilancia_clima (tiempo_id);
 CREATE INDEX IF NOT EXISTS idx_fact_ano_semana ON fact_vigilancia_clima (ano, semana_epidemiologica);
 CREATE INDEX IF NOT EXISTS idx_pred_ubigeo ON predicciones_vigilancia (ubigeo);
 CREATE INDEX IF NOT EXISTS idx_pred_tiempo ON predicciones_vigilancia (tiempo_id);
+
+-- 5. Métricas de evaluación por ejecución de entrenamiento.
+CREATE TABLE IF NOT EXISTS public.metricas_evaluacion (
+    run_id VARCHAR(100) PRIMARY KEY,
+    timestamp_evaluacion TIMESTAMPTZ NOT NULL,
+    modelo TEXT NOT NULL,
+    target TEXT NOT NULL,
+    train_max_year INTEGER NOT NULL,
+    test_min_year INTEGER NOT NULL,
+    rmse DOUBLE PRECISION NOT NULL,
+    mae DOUBLE PRECISION NOT NULL,
+    r2 DOUBLE PRECISION NOT NULL,
+    baseline_rmse DOUBLE PRECISION NOT NULL,
+    baseline_mae DOUBLE PRECISION NOT NULL,
+    baseline_r2 DOUBLE PRECISION NOT NULL,
+    reduccion_rmse_porcentaje DOUBLE PRECISION NOT NULL,
+    reduccion_mae_porcentaje DOUBLE PRECISION NOT NULL,
+    supera_al_baseline BOOLEAN NOT NULL,
+    artifact_uri TEXT NOT NULL,
+    reporte JSONB NOT NULL,
+    registrado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (train_max_year < test_min_year)
+);

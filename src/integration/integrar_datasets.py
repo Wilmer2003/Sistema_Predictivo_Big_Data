@@ -186,6 +186,8 @@ def procesar_capa_gold(
     try:
         df_ira = active_spark.read.parquet(silver_ira_path)
     except Exception:
+        if cfg.is_aws:
+            raise
         df_ira = active_spark.read.option("header", True).option("sep", ";").csv(
             str(cfg.root_dir / "data" / "processed" / "ira" / "IRA_La_Libertad_2015_2024.csv")
         )
@@ -193,6 +195,8 @@ def procesar_capa_gold(
     try:
         df_malaria = active_spark.read.parquet(silver_malaria_path)
     except Exception:
+        if cfg.is_aws:
+            raise
         df_malaria = active_spark.read.option("header", True).option("sep", ",").csv(
             str(cfg.root_dir / "data" / "processed" / "malaria" / "Malaria_La_Libertad_2015_2024.csv")
         )
@@ -200,6 +204,8 @@ def procesar_capa_gold(
     try:
         df_senamhi = active_spark.read.parquet(silver_senamhi_path)
     except Exception:
+        if cfg.is_aws:
+            raise
         df_senamhi = active_spark.read.option("header", True).option("sep", ",").csv(
             str(cfg.root_dir / "data" / "processed" / "senamhi" / "Clima_La_Libertad_2015_2024.csv")
         )

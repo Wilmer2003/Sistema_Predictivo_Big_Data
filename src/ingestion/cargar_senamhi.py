@@ -8,7 +8,7 @@ import argparse
 from pathlib import Path
 import sys
 from typing import Optional
-from src.common.config import get_config
+from src.common.config import AppConfig, get_config
 from src.common.logger import get_logger
 from src.ingestion.raw_ingestor import ingest_raw_file
 from src.ingestion.batch_manager import BatchMetadata
@@ -16,9 +16,9 @@ from src.ingestion.batch_manager import BatchMetadata
 logger = get_logger("Ingesta_SENAMHI")
 
 
-def buscar_archivo_candidato() -> Optional[str]:
+def buscar_archivo_candidato(config: Optional[AppConfig] = None) -> Optional[str]:
     """Busca archivos CSV candidatos disponibles en el repositorio para SENAMHI."""
-    cfg = get_config()
+    cfg = config or get_config()
     rutas_candidatas = [
         cfg.root_dir / "data" / "raw" / "senamhi" / "dataset_SENAMHI.csv",
         cfg.root_dir / "data" / "raw" / "senamhi" / "Clima_LaLibertad_2015_2024_Completo.csv",
@@ -30,7 +30,7 @@ def buscar_archivo_candidato() -> Optional[str]:
     return None
 
 
-def cargar_senamhi(archivo_origen: Optional[str] = None, force: bool = False) -> Optional[BatchMetadata]:
+def cargar_senamhi(archivo_origen: Optional[str] = None, force: bool = False, *, config: Optional[AppConfig] = None) -> Optional[BatchMetadata]:
     """
     Ejecuta el proceso de ingesta del lote de SENAMHI a la capa Bronze.
 
@@ -41,8 +41,11 @@ def cargar_senamhi(archivo_origen: Optional[str] = None, force: bool = False) ->
     Returns:
         Optional[BatchMetadata]: Metadatos del lote si fue ingerido, None si fue omitido o falló.
     """
-    ruta_archivo = archivo_origen or buscar_archivo_candidato()
+    cfg = config or get_config()
+    ruta_archivo = archivo_origen or buscar_archivo_candidato(cfg)
     if not ruta_archivo:
+        if cfg.is_aws:
+            raise FileNotFoundError("Falta el CSV de senamhi para la ingesta AWS.")
         logger.error("No se encontró ningún archivo CSV de SENAMHI para ingerir.")
         return None
 
@@ -51,6 +54,7 @@ def cargar_senamhi(archivo_origen: Optional[str] = None, force: bool = False) ->
         file_path=ruta_archivo,
         source="senamhi",
         force=force,
+        config=cfg,
     )
 
     if exito and metadata:

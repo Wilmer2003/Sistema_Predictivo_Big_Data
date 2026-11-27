@@ -5,7 +5,6 @@ fact_vigilancia_clima y predicciones) hacia la base de datos relacional para Pow
 """
 
 import argparse
-from contextlib import closing
 from importlib.resources import files
 from pathlib import Path
 from typing import Dict, Optional, TYPE_CHECKING
@@ -13,7 +12,9 @@ from typing import Dict, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame, SparkSession
 
-from src.common.config import get_config, AppConfig, PostgresConfig
+from src.common.config import get_config, AppConfig
+from src.common.postgres import connect_postgres as _conectar
+from src.common.postgres import postgres_cursor
 from src.common.logger import get_logger
 from src.common.spark_session import get_spark_session
 
@@ -25,15 +26,6 @@ CLAVES_SERVING = {
     "fact_vigilancia_clima": ("ubigeo", "tiempo_id"),
     "predicciones_vigilancia": ("ubigeo", "tiempo_id"),
 }
-
-
-def _conectar(pg: PostgresConfig):
-    import psycopg2
-
-    return psycopg2.connect(
-        host=pg.host, port=pg.port, dbname=pg.db,
-        user=pg.user, password=pg.password, connect_timeout=5,
-    )
 
 
 def probar_conexion_postgres(config: Optional[AppConfig] = None) -> bool:
@@ -48,8 +40,7 @@ def probar_conexion_postgres(config: Optional[AppConfig] = None) -> bool:
     logger.info("Probando conectividad hacia PostgreSQL en %s:%d/%s...", pg.host, pg.port, pg.db)
 
     try:
-        with closing(_conectar(pg)):
-            pass
+        _conectar(pg).close()
         logger.info("Conexión a PostgreSQL establecida exitosamente.")
         return True
     except ImportError:
@@ -73,7 +64,7 @@ def crear_tablas_postgres(config: Optional[AppConfig] = None) -> bool:
         from psycopg2 import sql
 
         ddl_sql = files("src.serving").joinpath("schema.sql").read_text(encoding="utf-8")
-        with closing(_conectar(pg)) as conn, conn, conn.cursor() as cur:
+        with postgres_cursor(_conectar(pg)) as cur:
             cur.execute(sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(pg.schema)))
             cur.execute(ddl_sql)
         logger.info("Tablas del esquema dimensional creadas exitosamente en PostgreSQL.")
@@ -108,7 +99,7 @@ def cargar_dataframe_a_postgres(
             sql.SQL(", ").join(map(sql.Identifier, df.columns)),
             sql.SQL(", ").join(map(sql.Identifier, claves)),
         )
-        with closing(_conectar(pg)) as conn, conn, conn.cursor() as cur:
+        with postgres_cursor(_conectar(pg)) as cur:
             execute_values(cur, consulta, df.toLocalIterator(), page_size=1000)
         logger.info("Tabla '%s' cargada correctamente en PostgreSQL.", nombre_tabla)
         return True
@@ -211,10 +202,11 @@ def cargar_capa_gold_a_postgres(
             )
             resultados["predicciones_vigilancia"] = False
     else:
-        logger.warning("No se encontraron predicciones en: %s", preds_path)
-        resultados["predicciones_vigilancia"] = False
+        logger.info("No se encontraron predicciones locales en: %s", preds_path)
 
     return resultados
+
+
 def main():
     parser = argparse.ArgumentParser(description="Módulo de Serving hacia Amazon RDS PostgreSQL / Local.")
     parser.add_argument("--test", action="store_true", help="Probar conectividad con PostgreSQL.")

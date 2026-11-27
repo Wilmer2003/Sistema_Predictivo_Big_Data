@@ -6,18 +6,20 @@ y constantes de dominio para todas las capas del pipeline Medallion.
 
 from dataclasses import dataclass, field
 import os
+from uuid import uuid4
 from pathlib import Path
 from typing import Optional
 
 # Cargar automáticamente variables de entorno desde .env
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = Path(os.getenv("PIPELINE_CONFIG_FILE") or _REPO_ROOT / ".env")
 
 try:
     from dotenv import load_dotenv
-    load_dotenv(_REPO_ROOT / ".env")
+    load_dotenv(_ENV_FILE)
 except ImportError:
     # Fallback seguro en entornos mínimos donde python-dotenv aún no fue instalado
-    _env_file = _REPO_ROOT / ".env"
+    _env_file = _ENV_FILE
     if _env_file.exists():
         try:
             with open(_env_file, "r", encoding="utf-8") as _f:
@@ -62,6 +64,17 @@ class PostgresConfig:
     password: str = field(default_factory=lambda: os.getenv("POSTGRES_PASSWORD", ""))
     schema: str = field(default_factory=lambda: os.getenv("POSTGRES_SCHEMA", "public"))
 
+    sslmode: Optional[str] = field(default_factory=lambda: os.getenv("POSTGRES_SSLMODE"))
+    sslrootcert: Optional[str] = field(default_factory=lambda: os.getenv("POSTGRES_SSLROOTCERT"))
+
+    @property
+    def tls_options(self) -> dict:
+        return {
+            key: value
+            for key, value in (("sslmode", self.sslmode), ("sslrootcert", self.sslrootcert))
+            if value
+        }
+
     @property
     def jdbc_url(self) -> str:
         """Retorna la URL JDBC compatible con Spark."""
@@ -74,6 +87,7 @@ class PostgresConfig:
             "user": self.user,
             "password": self.password,
             "driver": "org.postgresql.Driver",
+            **self.tls_options,
         }
 
 
@@ -105,6 +119,7 @@ class AppConfig:
 
     postgres: PostgresConfig = field(default_factory=PostgresConfig)
     spark: SparkSettings = field(default_factory=SparkSettings)
+    run_id: str = field(default_factory=lambda: os.getenv("PIPELINE_RUN_ID") or uuid4().hex)
 
     @property
     def is_aws(self) -> bool:

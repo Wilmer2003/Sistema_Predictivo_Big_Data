@@ -9,8 +9,8 @@ python-dotenv>=1.0.1
 pydantic>=2.6.0
 
 # SDK de Amazon Web Services (S3 / EMR)
-boto3>=1.34.0
-botocore>=1.34.0
+boto3>=1.36.0
+botocore>=1.36.0
 
 # Conectividad a bases de datos (Serving / Amazon RDS PostgreSQL)
 psycopg2-binary>=2.9.9
