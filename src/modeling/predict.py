@@ -96,7 +96,7 @@ def guardar_predicciones(
     Guarda las predicciones generadas en formato Parquet en la capa Gold / Resultados.
     """
     cfg = config or get_config()
-    dest_path = str(cfg.root_dir / "results" / "estadisticas" / output_name).replace("\\", "/")
+    dest_path = cfg.get_predictions_path(output_name)
 
     logger.info("Guardando predicciones generadas en: %s", dest_path)
     df_predicciones.write.mode("overwrite").parquet(dest_path)

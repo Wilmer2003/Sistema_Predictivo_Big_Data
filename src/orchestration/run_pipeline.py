@@ -53,9 +53,9 @@ def lanzar_step_emr(
             "AWS_REGION": cfg.aws_region,
             "SPARK_MASTER": "yarn",
         }
+        args.extend(["--py-files", script_s3_uri.rsplit("/", 1)[0] + "/pipeline_src.zip"])
         config_file = os.getenv("EMR_PIPELINE_CONFIG_FILE")
         if config_file:
-            args.extend(["--py-files", script_s3_uri.rsplit("/", 1)[0] + "/pipeline_src.zip"])
             driver_env["PIPELINE_CONFIG_FILE"] = config_file
         for key, value in driver_env.items():
             args.extend(["--conf", f"spark.yarn.appMasterEnv.{key}={value}"])
@@ -220,11 +220,12 @@ def ejecutar_pipeline_completo(
             from src.serving.cargar_postgres import crear_tablas_postgres, cargar_capa_gold_a_postgres
 
             logger.info("\n--- [FASE 5: SERVING - AMAZON RDS / POSTGRESQL] ---")
-            if not cfg.is_aws:
-                crear_tablas_postgres(config=cfg)
+            # RDS se migra antes de ejecutar EMR. En local se conserva la creación del esquema.
+            if not cfg.is_aws and not crear_tablas_postgres(config=cfg):
+                raise RuntimeError("No se pudo preparar el esquema local de Serving.")
             resultados = cargar_capa_gold_a_postgres(spark=spark, config=cfg)
             fallidas = [tabla for tabla, cargada in resultados.items() if not cargada]
-            if cfg.is_aws and fallidas:
+            if fallidas:
                 raise RuntimeError(f"Falló Serving para: {', '.join(fallidas)}")
 
         logger.info("\n==================================================")
