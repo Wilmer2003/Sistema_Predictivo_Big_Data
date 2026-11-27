@@ -35,7 +35,7 @@ def cargar_modelo(
     from pyspark.ml import PipelineModel
 
     cfg = config or get_config()
-    model_path = str(cfg.root_dir / "results" / "modelos" / model_name).replace("\\", "/")
+    model_path = cfg.get_model_path(model_name)
 
     logger.info("Cargando modelo serializado de MLlib desde: %s", model_path)
     return PipelineModel.load(model_path)

@@ -160,7 +160,7 @@ class TestIngestion(unittest.TestCase):
             with patch.object(BatchControlManager, "_get_db_connection") as mock_conn:
                 mock_cursor = MagicMock()
                 mock_conn.return_value.cursor.return_value.__enter__.return_value = mock_cursor
-                mock_cursor.fetchone.return_value = None  # No duplicado
+                mock_cursor.fetchone.side_effect = [None, ("senamhi_test",)]
 
                 exito, meta, estado = ingest_raw_file(
                     file_path=self.sample_csv_path,
@@ -201,6 +201,7 @@ class TestIngestion(unittest.TestCase):
             mock_conn.return_value.cursor.return_value.__enter__.return_value = mock_cursor
 
             # 1. Registrar
+            mock_cursor.fetchone.return_value = (meta.batch_id,)
             mgr.register_batch(meta)
             self.assertTrue(mock_cursor.execute.called)
 

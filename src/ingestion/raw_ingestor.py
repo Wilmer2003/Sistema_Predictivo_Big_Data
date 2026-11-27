@@ -58,6 +58,8 @@ def ingest_raw_file(
 
     input_path = Path(file_path).resolve()
     if not input_path.is_file():
+        if cfg.is_aws:
+            raise FileNotFoundError(input_path)
         logger.error("Archivo de origen no encontrado: %s", file_path)
         return False, None, f"FILE_NOT_FOUND: {file_path}"
 
@@ -79,18 +81,15 @@ def ingest_raw_file(
     bronze_base = cfg.get_bronze_path(source_clean)
 
     if cfg.is_aws:
-        # Destino en Amazon S3
-        dest_filename = input_path.name
-        s3_key = f"bronze/{source_clean}/fecha_ingesta={today_iso}/{dest_filename}"
+        if not cfg.s3_bucket:
+            raise ValueError("S3_BUCKET es obligatorio en modo AWS.")
+        import boto3
+
+        # La misma entrada usa la misma clave aunque se reintente otro día.
+        s3_key = f"bronze/{source_clean}/sha256={file_hash}/lote.csv"
         dest_path = f"s3://{cfg.s3_bucket}/{s3_key}"
         logger.info("Subiendo archivo a Amazon S3: %s", dest_path)
-        try:
-            import boto3
-            s3_client = boto3.client("s3", region_name=cfg.aws_region)
-            s3_client.upload_file(str(input_path), cfg.s3_bucket, s3_key)
-            logger.info("Subida a Amazon S3 completada con éxito: %s", dest_path)
-        except Exception as e:
-            logger.warning("No se pudo subir a Amazon S3 directamente mediante SDK: %s", e)
+        boto3.client("s3", region_name=cfg.aws_region).upload_file(str(input_path), cfg.s3_bucket, s3_key)
     else:
         # Destino en filesystem local
         dest_dir = Path(bronze_base) / f"fecha_ingesta={today_iso}"
@@ -114,6 +113,6 @@ def ingest_raw_file(
         status="REGISTERED",
     )
 
-    control_mgr.register_batch(metadata)
+    control_mgr.register_batch(metadata, force=force)
     logger.info("Ingesta completada exitosamente para lote: %s", batch_id)
     return True, metadata, "INGESTED"

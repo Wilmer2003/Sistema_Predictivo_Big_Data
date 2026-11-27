@@ -415,3 +415,9 @@ Proyecto del Programa de Estudio de Ingeniería de Computación y Sistemas (UPAO
 
 ---
 *Sistema Predictivo Big Data: Vigilancia Epidemiológica en La Libertad (Perú)*
+
+### Auditoría y métricas en AWS
+
+Las instrucciones para instalar la corrección sin volver a correr el pipeline,
+recuperar artefactos y cambiar las fuentes de Power BI están en la
+[guía de auditoría y métricas en AWS](docs/arquitectura/aws_auditoria_metricas.md).

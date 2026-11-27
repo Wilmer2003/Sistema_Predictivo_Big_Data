@@ -21,7 +21,7 @@ class TestServing(unittest.TestCase):
             ddl_content = f.read().upper()
 
         # Validar existencia de la tabla de auditoría de lotes de Amazon RDS
-        self.assertIn("CREATE TABLE IF NOT EXISTS LOTES", ddl_content)
+        self.assertIn("CREATE TABLE IF NOT EXISTS PUBLIC.LOTES", ddl_content)
         self.assertIn("CREATE INDEX IF NOT EXISTS IDX_LOTES_FILE_HASH", ddl_content)
 
         # Validar existencia de las tablas del esquema en estrella
@@ -29,6 +29,9 @@ class TestServing(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS DIM_TIEMPO", ddl_content)
         self.assertIn("CREATE TABLE IF NOT EXISTS FACT_VIGILANCIA_CLIMA", ddl_content)
         self.assertIn("CREATE TABLE IF NOT EXISTS PREDICCIONES_VIGILANCIA", ddl_content)
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS PUBLIC.METRICAS_EVALUACION", ddl_content)
+        self.assertIn("RUN_ID VARCHAR(100) PRIMARY KEY", ddl_content)
 
         # Validar claves foráneas
         self.assertIn("REFERENCES DIM_UBIGEO", ddl_content)

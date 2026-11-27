@@ -153,8 +153,7 @@ def procesar_silver_ira(
 
     # Actualizar estado de lotes en el gestor de control
     control_mgr = BatchControlManager(config=cfg)
-    for b in control_mgr.get_pending_batches(source="ira"):
-        control_mgr.update_batch_status(b.file_hash, "PROCESSED_SILVER")
+    control_mgr.mark_batches_as_silver("ira", df_raw.inputFiles() if cfg.is_aws else None)
 
     logger.info("Pipeline Silver de IRA concluido con éxito.")
     return df_silver

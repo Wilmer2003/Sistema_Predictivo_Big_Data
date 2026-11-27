@@ -5,13 +5,15 @@ fact_vigilancia_clima y predicciones) hacia la base de datos relacional para Pow
 """
 
 import argparse
+from importlib.resources import files
 from pathlib import Path
 from typing import Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame, SparkSession
 
-from src.common.config import get_config, AppConfig, PostgresConfig
+from src.common.config import get_config, AppConfig
+from src.common.postgres import connect_postgres, postgres_cursor
 from src.common.logger import get_logger
 from src.common.spark_session import get_spark_session
 
@@ -30,16 +32,7 @@ def probar_conexion_postgres(config: Optional[AppConfig] = None) -> bool:
     logger.info("Probando conectividad hacia PostgreSQL en %s:%d/%s...", pg.host, pg.port, pg.db)
 
     try:
-        import psycopg2
-        conn = psycopg2.connect(
-            host=pg.host,
-            port=pg.port,
-            dbname=pg.db,
-            user=pg.user,
-            password=pg.password,
-            connect_timeout=3,
-        )
-        conn.close()
+        connect_postgres(pg).close()
         logger.info("Conexión a PostgreSQL establecida exitosamente.")
         return True
     except ImportError:
@@ -59,29 +52,10 @@ def crear_tablas_postgres(config: Optional[AppConfig] = None) -> bool:
     """
     cfg = config or get_config()
     pg = cfg.postgres
-    schema_path = Path(__file__).parent / "schema.sql"
-
-    if not schema_path.is_file():
-        logger.error("Archivo DDL no encontrado: %s", schema_path)
-        return False
-
-    with open(schema_path, "r", encoding="utf-8") as f:
-        ddl_sql = f.read()
-
     try:
-        import psycopg2
-        conn = psycopg2.connect(
-            host=pg.host,
-            port=pg.port,
-            dbname=pg.db,
-            user=pg.user,
-            password=pg.password,
-            connect_timeout=5,
-        )
-        with conn.cursor() as cur:
+        ddl_sql = files("src.serving").joinpath("schema.sql").read_text(encoding="utf-8")
+        with postgres_cursor(connect_postgres(pg)) as cur:
             cur.execute(ddl_sql)
-        conn.commit()
-        conn.close()
         logger.info("Tablas del esquema dimensional creadas exitosamente en PostgreSQL.")
         return True
     except ImportError:
@@ -120,9 +94,7 @@ def cargar_dataframe_a_postgres(
             .format("jdbc")
             .option("url", pg.jdbc_url)
             .option("dbtable", nombre_tabla)
-            .option("user", pg.user)
-            .option("password", pg.password)
-            .option("driver", "org.postgresql.Driver")
+            .options(**pg.connection_properties)
             .mode(modo)
             .save()
         )

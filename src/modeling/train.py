@@ -6,7 +6,6 @@ ensamblados (Random Forest / GBT), evalúa frente al baseline y guarda resultado
 
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 
@@ -172,25 +171,30 @@ def entrenar_modelo_predictivo(
     logger.info("Mejora RMSE -> %.2f%% (Supera al baseline: %s)", mejora_rmse_pct, rmse < base_rmse)
     logger.info("==================================================")
 
-    # 8. Persistir modelo y métricas en disco
-    dir_modelos = cfg.root_dir / "results" / "modelos" / model_name
-    dir_estadisticas = cfg.root_dir / "results" / "estadisticas"
-    dir_modelos.parent.mkdir(parents=True, exist_ok=True)
-    dir_estadisticas.mkdir(parents=True, exist_ok=True)
+    if cfg.is_aws:
+        from src.serving.metricas import persistir_metricas_aws
 
-    # Guardar modelo de Spark
-    try:
-        model.write().overwrite().save(str(dir_modelos).replace("\\", "/"))
-        logger.info("Modelo serializado guardado en: %s", dir_modelos)
-    except Exception as e:
-        logger.warning("No se pudo serializar el modelo en disco local: %s", e)
+        reporte["run_id"] = cfg.run_id
+        persistir_metricas_aws(cfg, reporte)
+    else:
+        dir_estadisticas = cfg.root_dir / "results" / "estadisticas"
+        dir_estadisticas.mkdir(parents=True, exist_ok=True)
+        reporte_path = dir_estadisticas / "metricas_evaluacion.json"
+        with reporte_path.open("w", encoding="utf-8") as file:
+            json.dump(reporte, file, indent=2)
+        logger.info("Reporte de métricas guardado en: %s", reporte_path)
 
-    # Guardar reporte JSON
-    reporte_path = dir_estadisticas / "metricas_evaluacion.json"
-    with open(reporte_path, "w", encoding="utf-8") as f:
-        json.dump(reporte, f, indent=2)
-    logger.info("Reporte de métricas guardado en: %s", reporte_path)
-
+    model_path = cfg.get_model_path(model_name)
+    if cfg.is_aws:
+        model.write().overwrite().save(model_path)
+        logger.info("Modelo serializado guardado en: %s", model_path)
+    else:
+        Path(model_path).parent.mkdir(parents=True, exist_ok=True)
+        try:
+            model.write().overwrite().save(model_path)
+            logger.info("Modelo serializado guardado en: %s", model_path)
+        except Exception as exc:
+            logger.warning("No se pudo serializar el modelo en disco local: %s", exc)
     return model, reporte
 
 

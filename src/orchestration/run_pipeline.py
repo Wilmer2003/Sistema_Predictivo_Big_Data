@@ -6,11 +6,13 @@ Soporta ejecución local y lanzamiento de pasos sobre Amazon EMR (Spark en YARN)
 """
 
 import argparse
+import os
 import sys
 from typing import Optional, List, Dict, Any
 
 from src.common.config import get_config, AppConfig
 from src.common.logger import get_logger
+from src.common.s3_artifacts import validate_run_id
 
 logger = get_logger("Orquestador_Pipeline")
 
@@ -43,7 +45,20 @@ def lanzar_step_emr(
 
         emr_client = boto3.client("emr", region_name=cfg.aws_region)
 
-        args = ["spark-submit", "--deploy-mode", "cluster"]
+        args = ["spark-submit", "--master", "yarn", "--deploy-mode", "cluster"]
+        driver_env = {
+            "PIPELINE_ENV": "aws",
+            "PIPELINE_RUN_ID": validate_run_id(cfg.run_id),
+            "S3_BUCKET": cfg.s3_bucket,
+            "AWS_REGION": cfg.aws_region,
+            "SPARK_MASTER": "yarn",
+        }
+        config_file = os.getenv("EMR_PIPELINE_CONFIG_FILE")
+        if config_file:
+            args.extend(["--py-files", script_s3_uri.rsplit("/", 1)[0] + "/pipeline_src.zip"])
+            driver_env["PIPELINE_CONFIG_FILE"] = config_file
+        for key, value in driver_env.items():
+            args.extend(["--conf", f"spark.yarn.appMasterEnv.{key}={value}"])
         args.extend([
             "--packages", "org.postgresql:postgresql:42.7.3",
             "--conf", "spark.sql.sources.partitionOverwriteMode=dynamic",
@@ -109,23 +124,41 @@ def ejecutar_pipeline_completo(
     # FASE 1: BRONZE (Ingesta cruda con control SHA-256)
     # En AWS sube a Amazon S3 (s3://) y registra en tabla 'lotes' de Amazon RDS
     # --------------------------------------------------------------------------
+    if cfg.is_aws:
+        from src.ingestion.batch_manager import BatchControlManager
+
+        validate_run_id(cfg.run_id)
+        logger.info("run_id=%s", cfg.run_id)
+        audit = BatchControlManager(config=cfg)
+
     if run_ingestion:
         from src.ingestion.cargar_ira import cargar_ira
         from src.ingestion.cargar_malaria import cargar_malaria
         from src.ingestion.cargar_senamhi import cargar_senamhi
 
         logger.info("\n--- [FASE 1: BRONZE - INGESTA DE LOTES] ---")
-        cargar_ira(force=force_ingest)
-        cargar_malaria(force=force_ingest)
-        cargar_senamhi(force=force_ingest)
+        try:
+            cargar_ira(force=force_ingest, config=cfg)
+            cargar_malaria(force=force_ingest, config=cfg)
+            cargar_senamhi(force=force_ingest, config=cfg)
+            if cfg.is_aws:
+                audit.publish_snapshot("bronze")
+        except Exception:
+            logger.exception("Falló la ingesta Bronze o la publicación de auditoría.")
+            return False
 
-    # Si se solicita despachar las fases de procesamiento Spark a Amazon EMR:
-    if cfg.is_aws and submit_to_emr:
-        logger.info("\n--- [DESPACHANDO COMPUTO A AMAZON EMR CLUSTER] ---")
-        script_s3 = f"s3://{cfg.s3_bucket}/scripts/run_pipeline.py"
-        args_emr = ["--silver", "--gold", "--model", "--serving"]
-        return lanzar_step_emr(script_s3, step_args=args_emr, config=cfg)
-
+    if submit_to_emr:
+        if not cfg.is_aws:
+            logger.error("--emr requiere PIPELINE_ENV=aws.")
+            return False
+        args_emr = [flag for flag, enabled in (
+            ("--silver", run_silver), ("--gold", run_gold),
+            ("--model", run_model), ("--serving", run_serving),
+        ) if enabled]
+        if args_emr:
+            scripts_prefix = os.getenv("EMR_SCRIPTS_PREFIX", "scripts").strip("/")
+            script_s3 = f"s3://{cfg.s3_bucket}/{scripts_prefix}/run_pipeline.py"
+            return lanzar_step_emr(script_s3, step_args=args_emr, config=cfg)
     # Si solo se requería la fase de ingesta Bronze, finalizamos exitosamente sin levantar Spark
     if not (run_silver or run_gold or run_model or run_serving):
         logger.info("\n==================================================")
@@ -151,16 +184,22 @@ def ejecutar_pipeline_completo(
             procesar_silver_ira(spark=spark, config=cfg)
             procesar_silver_malaria(spark=spark, config=cfg)
             procesar_silver_senamhi(spark=spark, config=cfg)
+            if cfg.is_aws:
+                audit.publish_snapshot("silver")
 
         # ----------------------------------------------------------------------
         # FASE 3: GOLD (Integración y Feature Engineering con Lags 1-3)
         # ----------------------------------------------------------------------
         df_features = None
-        if run_gold or run_model:
+        if run_gold or (run_model and not cfg.is_aws):
             from src.integration.integrar_datasets import procesar_capa_gold
 
             logger.info("\n--- [FASE 3: GOLD - INTEGRACIÓN Y FEATURES] ---")
-            dim_u, dim_t, fact_v, df_features = procesar_capa_gold(spark=spark, config=cfg)
+            _, _, _, df_features = procesar_capa_gold(spark=spark, config=cfg)
+            if cfg.is_aws:
+                audit.publish_snapshot("gold")
+        elif run_model:
+            df_features = spark.read.parquet(f"{cfg.get_gold_path()}/features_ml")
 
         # ----------------------------------------------------------------------
         # FASE 4: MODELADO PREDICTIVO (PySpark MLlib vs Baseline)
@@ -181,8 +220,12 @@ def ejecutar_pipeline_completo(
             from src.serving.cargar_postgres import crear_tablas_postgres, cargar_capa_gold_a_postgres
 
             logger.info("\n--- [FASE 5: SERVING - AMAZON RDS / POSTGRESQL] ---")
-            crear_tablas_postgres(config=cfg)
-            cargar_capa_gold_a_postgres(spark=spark, config=cfg)
+            if not cfg.is_aws:
+                crear_tablas_postgres(config=cfg)
+            resultados = cargar_capa_gold_a_postgres(spark=spark, config=cfg)
+            fallidas = [tabla for tabla, cargada in resultados.items() if not cargada]
+            if cfg.is_aws and fallidas:
+                raise RuntimeError(f"Falló Serving para: {', '.join(fallidas)}")
 
         logger.info("\n==================================================")
         logger.info("  PIPELINE EJECUTADO EXITOSAMENTE AL 100%")

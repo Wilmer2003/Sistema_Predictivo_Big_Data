@@ -161,8 +161,7 @@ def procesar_silver_senamhi(
 
     # Actualizar estado de lotes en el gestor de control
     control_mgr = BatchControlManager(config=cfg)
-    for b in control_mgr.get_pending_batches(source="senamhi"):
-        control_mgr.update_batch_status(b.file_hash, "PROCESSED_SILVER")
+    control_mgr.mark_batches_as_silver("senamhi", df_raw.inputFiles() if cfg.is_aws else None)
 
     logger.info("Pipeline Silver de SENAMHI concluido con éxito.")
     return df_silver

@@ -59,3 +59,77 @@ De acuerdo con el diagrama de arquitectura del proyecto:
 3. **Página 3: Monitoreo de Modelos Predictivos y Alertas Tempranas**:
    * Comparativa de casos reales vs predicción del modelo de Spark MLlib.
    * Semáforo de alerta temprana distrital ante anomalías predictivas.
+
+## Sustituir las fuentes JSON por PostgreSQL
+
+Cuando la carga de AWS esté validada, editar las **dos consultas
+existentes** en el Editor avanzado de Power Query. Conservar los nombres
+de consulta, los pasos posteriores al origen, los alias de las columnas y
+los tipos finales. Así las medidas DAX, las relaciones y los visuales
+siguen apuntando a las mismas tablas y columnas. Usar el endpoint y la
+base que ya funcionan mediante VPN y TLS, con un rol de lectura.
+
+### Auditoría de lotes
+
+Sustituir el paso que actualmente produce el registro JSON raíz por el
+siguiente. `ServidorRDS` y `BaseRDS` son parámetros de Power Query.
+Mantener el nombre real de ese paso en el PBIX.
+
+```powerquery
+Origen = Json.Document(
+    PostgreSQL.Database(
+        ServidorRDS, BaseRDS,
+        [Query = "
+            SELECT jsonb_build_object(
+                'batches',
+                COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.ingest_timestamp, l.batch_id), '[]'::jsonb)
+            )::text AS documento
+            FROM public.lotes AS l
+        "]
+    ){0}[documento]
+),
+```
+
+Conservar la expansión de `batches` y los pasos de tipado. Si una lista
+vacía rompe la inferencia de columnas existente, materializar la lista
+con `Table.FromRecords(Origen[batches], ColumnasOriginales, MissingField.UseNull)`,
+donde `ColumnasOriginales` es la lista explícita del paso de expansión
+del PBIX. La tabla de origen incluye `batch_id`, `source`, `file_name`,
+`file_hash`, `file_size_bytes`, `load_date`, `ingest_timestamp`,
+`destination_path`, `status` y `updated_at`. Con RDS vacía, la auditoría
+debe mostrar cero lotes.
+
+### Métricas de evaluación
+
+El paso siguiente mantiene el mismo registro anidado que leía el JSON.
+Selecciona la evaluación más reciente por su fecha real, con un desempate
+estable. Si el tablero debe mostrar una ejecución específica, añadir
+`WHERE run_id = 'ID-DE-LA-EJECUCION'` antes de `ORDER BY`.
+
+```powerquery
+FilasMetricas = PostgreSQL.Database(
+    ServidorRDS, BaseRDS,
+    [Query = "
+        SELECT (reporte - 'run_id')::text AS documento
+        FROM public.metricas_evaluacion
+        ORDER BY timestamp_evaluacion DESC, run_id DESC
+        LIMIT 1
+    "]
+),
+Origen = if Table.IsEmpty(FilasMetricas)
+    then error "RDS todavía no contiene una evaluación verificable."
+    else Json.Document(FilasMetricas{0}[documento]),
+```
+
+Conservar los pasos que expanden `split_temporal`, `metricas_modelo`,
+`metricas_baseline_persistencia` y `ganancia_vs_baseline`. La conversión
+`Json.Document` lee texto devuelto por PostgreSQL. Las consultas dejan de
+depender de archivos JSON locales. Aplicar este cambio de métricas
+cuando exista al menos una evaluación AWS verificable en RDS.
+
+Antes de aplicar los cambios, comparar en vista previa los nombres,
+tipos y número de columnas con el último paso de las consultas originales.
+Después de actualizar, comprobar los totales y las medidas DAX en las
+páginas de auditoría y monitoreo. Aprobar la consulta SQL nativa en Power
+BI si aparece la solicitud. Consultar
+[PostgreSQL.Database](https://learn.microsoft.com/en-us/powerquery-m/postgresql-database).
