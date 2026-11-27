@@ -26,5 +26,5 @@ jobs:
         run: pip install -r requirements.txt pytest
 
       - name: Ejecutar pruebas
-        run: |
-          pytest -q || { code=$?; [ "$code" -eq 5 ] && echo "Aún no hay pruebas" || exit "$code"; }
+        working-directory: ${{ github.workspace }}
+        run: python -m pytest -q
