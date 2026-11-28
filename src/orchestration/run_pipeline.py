@@ -57,6 +57,9 @@ def lanzar_step_emr(
         config_file = os.getenv("EMR_PIPELINE_CONFIG_FILE")
         if config_file:
             driver_env["PIPELINE_CONFIG_FILE"] = config_file
+        referencia_malaria = os.getenv("IRA_LEGACY_MALARIA_GOLD")
+        if referencia_malaria:
+            driver_env["IRA_LEGACY_MALARIA_GOLD"] = referencia_malaria
         for key, value in driver_env.items():
             args.extend(["--conf", f"spark.yarn.appMasterEnv.{key}={value}"])
         args.extend([
@@ -133,13 +136,11 @@ def ejecutar_pipeline_completo(
 
     if run_ingestion:
         from src.ingestion.cargar_ira import cargar_ira
-        from src.ingestion.cargar_malaria import cargar_malaria
         from src.ingestion.cargar_senamhi import cargar_senamhi
 
         logger.info("\n--- [FASE 1: BRONZE - INGESTA DE LOTES] ---")
         try:
             cargar_ira(force=force_ingest, config=cfg)
-            cargar_malaria(force=force_ingest, config=cfg)
             cargar_senamhi(force=force_ingest, config=cfg)
             if cfg.is_aws:
                 audit.publish_snapshot("bronze")
@@ -177,12 +178,10 @@ def ejecutar_pipeline_completo(
         # ----------------------------------------------------------------------
         if run_silver:
             from src.preprocessing.limpiar_ira import procesar_silver_ira
-            from src.preprocessing.limpiar_malaria import procesar_silver_malaria
             from src.preprocessing.limpiar_senamhi import procesar_silver_senamhi
 
             logger.info("\n--- [FASE 2: SILVER - PREPROCESAMIENTO] ---")
             procesar_silver_ira(spark=spark, config=cfg)
-            procesar_silver_malaria(spark=spark, config=cfg)
             procesar_silver_senamhi(spark=spark, config=cfg)
             if cfg.is_aws:
                 audit.publish_snapshot("silver")

@@ -4,6 +4,7 @@ Integra IRA + Malaria + SENAMHI al grano (ubigeo + ano + semana_epidemiologica),
 ejecuta Feature Engineering (lags 1 a 3 semanas) y genera el modelo dimensional.
 """
 
+import os
 from typing import Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,6 +26,8 @@ from src.integration.dimensional_model import (
 )
 
 logger = get_logger("Integracion_Gold")
+CLAVE_SEMANAL = ("ubigeo", "ano", "semana_epidemiologica")
+MEDIDAS_MALARIA_LEGACY = ("malaria_casos_total", "malaria_b50", "malaria_b51")
 
 
 def agregar_senamhi_semanal(df_senamhi: "DataFrame") -> "DataFrame":
@@ -77,47 +80,32 @@ def agregar_ira_semanal(df_ira: "DataFrame") -> "DataFrame":
 
 
 def agregar_malaria_semanal(df_malaria: "DataFrame") -> "DataFrame":
-    """
-    Agrega casos individuales de Malaria al grano (ubigeo, ano, semana_epidemiologica).
-    """
-    from pyspark.sql.functions import col, sum as spark_sum, coalesce, lit
-
-    logger.info("Agregando casos de Malaria a nivel de ubigeo y semana...")
-    semana_col = "semana" if "semana" in df_malaria.columns else "semana_epidemiologica"
-
-    return (
-        df_malaria
-        .groupBy("ubigeo", "ano", semana_col)
-        .agg(
-            spark_sum(coalesce(col("Malaria_total"), lit(0))).alias("malaria_casos_total"),
-            spark_sum(coalesce(col("B50"), lit(0))).alias("malaria_b50"),
-            spark_sum(coalesce(col("B51"), lit(0))).alias("malaria_b51"),
-        )
-        .withColumnRenamed(semana_col, "semana_epidemiologica")
-    )
+    """Proyecta una referencia Gold histórica ya agregada para compatibilidad."""
+    requeridas = (*CLAVE_SEMANAL, *MEDIDAS_MALARIA_LEGACY)
+    if set(requeridas) - set(df_malaria.columns):
+        raise ValueError("La referencia histórica de malaria debe ser Gold semanal.")
+    semanal = df_malaria.select(*requeridas)
+    if semanal.groupBy(*CLAVE_SEMANAL).count().where("count > 1").limit(1).count():
+        raise ValueError("La referencia histórica de malaria contiene claves duplicadas.")
+    return semanal
 
 
 def integrar_fuentes_silver(
     df_ira: "DataFrame",
-    df_malaria: "DataFrame",
+    df_malaria: Optional["DataFrame"],
     df_senamhi: "DataFrame",
 ) -> "DataFrame":
     """
     Integra las tres fuentes procesadas de la capa Silver en un DataFrame unificado.
     """
-    ira_agg = agregar_ira_semanal(df_ira)
-    malaria_agg = agregar_malaria_semanal(df_malaria)
-    clima_agg = agregar_senamhi_semanal(df_senamhi)
+    from pyspark.sql.functions import lit
 
-    df_epi = ira_agg.join(
-        malaria_agg,
-        on=["ubigeo", "ano", "semana_epidemiologica"],
-        how="left",
-    ).fillna({
-        "malaria_casos_total": 0,
-        "malaria_b50": 0,
-        "malaria_b51": 0,
-    })
+    df_epi = agregar_ira_semanal(df_ira)
+    if df_malaria is None:
+        df_epi = df_epi.select("*", *(lit(None).cast("long").alias(c) for c in MEDIDAS_MALARIA_LEGACY))
+    else:
+        df_epi = df_epi.join(agregar_malaria_semanal(df_malaria), list(CLAVE_SEMANAL), "left")
+    clima_agg = agregar_senamhi_semanal(df_senamhi)
 
     df_integrado = df_epi.join(
         clima_agg,
@@ -179,7 +167,6 @@ def procesar_capa_gold(
     gold_dir = cfg.get_gold_path("epidemiologia_clima")
 
     silver_ira_path = f"{cfg.get_silver_path('ira')}/parquet"
-    silver_malaria_path = f"{cfg.get_silver_path('malaria')}/parquet"
     silver_senamhi_path = f"{cfg.get_silver_path('senamhi')}/parquet"
 
     logger.info("Cargando datasets Silver para integración...")
@@ -192,14 +179,12 @@ def procesar_capa_gold(
             str(cfg.root_dir / "data" / "processed" / "ira" / "IRA_La_Libertad_2015_2024.csv")
         )
 
-    try:
-        df_malaria = active_spark.read.parquet(silver_malaria_path)
-    except Exception:
-        if cfg.is_aws:
-            raise
-        df_malaria = active_spark.read.option("header", True).option("sep", ",").csv(
-            str(cfg.root_dir / "data" / "processed" / "malaria" / "Malaria_La_Libertad_2015_2024.csv")
-        )
+    referencia = os.getenv("IRA_LEGACY_MALARIA_GOLD")
+    if referencia and referencia.rstrip("/") == f"{gold_dir}/fact_vigilancia":
+        raise ValueError("IRA_LEGACY_MALARIA_GOLD debe apuntar a una copia congelada independiente.")
+    df_malaria = active_spark.read.parquet(referencia) if referencia else None
+    if df_malaria is None:
+        logger.info("Gold IRA se genera con medidas históricas de malaria nulas; vigilancia usa su propia tabla.")
 
     try:
         df_senamhi = active_spark.read.parquet(silver_senamhi_path)

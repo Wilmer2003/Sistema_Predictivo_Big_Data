@@ -1,5 +1,8 @@
 # Sistema Predictivo Big Data en Power BI
 
+Para incorporar la fuente independiente de malaria, seguir
+[Vigilancia de malaria](vigilancia_malaria.md).
+
 El informe `Sistema_Predictivo_Big_Data.pbix` contiene tres páginas. La copia actual utiliza datos importados desde PostgreSQL local y dos archivos JSON del pipeline.
 
 ## Vigilancia epidemiológica
