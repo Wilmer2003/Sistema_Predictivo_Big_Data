@@ -11,7 +11,7 @@ def main() -> None:
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     source = root / "src"
-    paths = [*source.rglob("*.py"), source / "serving" / "schema.sql"]
+    paths = [*source.rglob("*.py"), *source.rglob("*.sql")]
 
     with ZipFile(args.output, mode="w", compression=ZIP_DEFLATED) as archive:
         # src es un paquete de espacio de nombres y zipimport necesita su entrada.
